@@ -7,21 +7,27 @@
   <meta name="description"
     content="Kit DevSecOps reproductible : CI, SAST, DAST, Trivy, Cosign, SBOM, Harbor, deploy par digest. Par Barthez Kenwou." />
   <title>Supply Chain Pipeline — Barthez Kenwou</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- Privacy-friendly analytics by Plausible (script vendored for SRI / supply-chain hygiene) -->
-  <script defer src="plausible.js"></script>
-  <script defer src="analytics.js"></script>
+  <!-- Privacy-friendly analytics by Plausible -->
+  <script async src="https://analytics.zenora360.com/js/pa-TESR1Qtax41pe3wE-jbYA.js"
+    integrity="sha384-1mzBdSnxRPycnbpJTCk+Zucgodd9K6+t509KnQxGzb36EqKNOMi5JYxtempN4oRZ"
+    crossorigin="anonymous"></script>
+  <script src="analytics.js"></script>
 
 </head>
 
 <body>
   <div class="atmosphere" aria-hidden="true"></div>
-  <div class="grid-noise" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
 
   <header class="topbar">
     <a class="brand" href="#overview" data-tab="overview">
-      <span class="brand-mark">SC</span>
+      <img class="brand-mark" src="assets/logo.png" width="38" height="38" alt="Barthez Kenwou" />
       <span class="brand-text">
         <strong>Supply Chain</strong>
         <span>pipeline kit</span>
@@ -42,19 +48,19 @@
     <section class="hero" id="top">
       <p class="eyebrow">Barthez Kenwou · DevSecOps</p>
       <h1>
-        La chaîne jusqu’à la prod,<br />
-        <em>pas juste jusqu’au build vert.</em>
+        De l’intention à la prod,<br />
+        <em>avec des preuves à chaque étape.</em>
       </h1>
       <p class="lede">
-        Ce site est volontairement léger. Ce qu’il prouve ne l’est pas : une
-        colonne vertébrale OCI reproductible — qualité, sécurité, image
-        scannée et signée, déploiement par digest — la même discipline que
-        j’applique en production sur
+        Ce dépôt est un kit de delivery OCI : CI, contrôles de sécurité, image
+        scannée et signée, déploiement par digest. La page est une vitrine
+        légère ; la valeur est la chaîne — celle que j’exploite déjà en
+        production sur
         <a href="https://zenora360.com" rel="noopener noreferrer">zenora360.com</a>.
       </p>
       <div class="hero-meta">
         <a class="chip" href="/health"><code>/health</code> · live</a>
-        <span class="chip">Harbor · Cosign · Compose · NPM</span>
+        <span class="chip">Registry · Cosign · Compose</span>
         <span class="chip">fail-closed</span>
       </div>
     </section>
@@ -82,11 +88,11 @@
         <p>
           J’ai extrait la chaîne DevSecOps que je fais tourner pour livrer un
           conteneur en production, et je l’ai publiée comme kit :
-          <strong>copie <code>.github/</code> + <code>deploy/</code>, branche tes secrets, livre</strong>.
+          <strong>copiez <code>.github/</code> + <code>deploy/</code>, branchez vos secrets, livrez</strong>.
           L’app ici n’est qu’un nginx statique — le produit, c’est le chemin jusqu’à prod.
         </p>
 
-        <h2>Ce que tu vois tourner derrière cette page</h2>
+        <h2>Ce que vous voyez tourner derrière cette page</h2>
         <ol class="flow-list">
           <li><strong>CI</strong> — Hadolint, Gitleaks, build image + probe <code>/health</code>, SonarQube si configuré
           </li>
@@ -109,14 +115,14 @@
           <a href="https://zenora360.com" rel="noopener noreferrer">ZENORA</a>
           ·
           <a href="https://ketc-services.com/" rel="noopener noreferrer">K&amp;C Services</a>.
-          Pour brancher la chaîne sur <em>ton</em> projet → onglet
+          Pour brancher la chaîne sur <em>votre</em> projet → onglet
           <button type="button" class="text-tab-link" data-tab="reuse">Intégrer</button>.
         </p>
 
         <div class="principle-strip">
           <div>
             <span class="num">01</span>
-            <p>Rien dans Harbor tant que Trivy image HIGH/CRITICAL n’est pas vert.</p>
+            <p>Rien dans le registry tant que Trivy image HIGH/CRITICAL n’est pas vert.</p>
           </div>
           <div>
             <span class="num">02</span>
@@ -262,7 +268,7 @@
           </ul>
           <p class="why">
             <strong>Pourquoi :</strong> scanner le Dockerfile ne suffit pas. La surface
-            runtime (nginx alpine + packages) est ce que tu exposes vraiment.
+            runtime (nginx alpine + packages) est ce que vous exposez vraiment.
           </p>
         </article>
 
@@ -337,72 +343,40 @@
       <article class="prose">
         <h2>Architectures</h2>
         <p>
-          Trois vues du même système. Les animations suivent le flux réel des
-          workflows — pas une illustration décorative.
+          Trois lectures du même système : workflows, séquence Release, runtime.
+          Les blocs suivent le flux réel des jobs — pas un schéma décoratif.
         </p>
       </article>
 
       <div class="arch-block" data-reveal>
         <h3>1 · Carte des workflows</h3>
         <div class="arch-canvas" id="arch-workflows" aria-label="Diagramme des workflows">
-          <svg viewBox="0 0 920 420" aria-labelledby="wf-title wf-desc">
-            <title id="wf-title">Carte des workflows CI Security Release Deploy</title>
-            <desc id="wf-desc">Flux depuis Push ou PR vers CI, Security, Release Image, Harbor et Deploy sur VPS.</desc>
-            <defs>
-              <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
-              </marker>
-            </defs>
-            <g class="arch-nodes">
-              <g class="node n1" transform="translate(40,40)">
-                <rect width="150" height="56" rx="4" />
-                <text x="75" y="34">Push / PR</text>
-              </g>
-              <g class="node n2" transform="translate(260,20)">
-                <rect width="150" height="56" rx="4" />
-                <text x="75" y="34">CI summary</text>
-              </g>
-              <g class="node n3" transform="translate(260,100)">
-                <rect width="150" height="56" rx="4" />
-                <text x="75" y="34">Security</text>
-              </g>
-              <g class="node n4" transform="translate(480,60)">
-                <rect width="170" height="56" rx="4" />
-                <text x="85" y="34">Release Image</text>
-              </g>
-              <g class="node n5" transform="translate(720,60)">
-                <rect width="150" height="56" rx="4" />
-                <text x="75" y="34">Deploy</text>
-              </g>
-              <g class="node n6" transform="translate(720,180)">
-                <rect width="150" height="56" rx="4" />
-                <text x="75" y="34">VPS + proxy</text>
-              </g>
-              <g class="node n7" transform="translate(480,200)">
-                <rect width="170" height="56" rx="4" />
-                <text x="85" y="34">Harbor @digest</text>
-              </g>
-              <g class="node n8" transform="translate(260,280)">
-                <rect width="150" height="56" rx="4" />
-                <text x="75" y="34">ZAP (cron)</text>
-              </g>
-            </g>
-            <g class="arch-edges" stroke="currentColor" fill="none" marker-end="url(#arrow)">
-              <path class="e e1" d="M190,68 H260" />
-              <path class="e e2" d="M190,68 C220,68 220,48 260,48" />
-              <path class="e e3" d="M190,68 C220,68 220,128 260,128" />
-              <path class="e e4" d="M410,48 C440,48 450,88 480,88" />
-              <path class="e e5" d="M410,128 C440,128 450,88 480,88" />
-              <path class="e e6" d="M650,88 H720" />
-              <path class="e e7" d="M795,116 V180" />
-              <path class="e e8" d="M650,88 C680,88 680,228 650,228" />
-              <path class="e e9" d="M565,256 V180" />
-              <path class="e e10" d="M335,336 H335" opacity="0.4" />
-            </g>
-            <text class="arch-caption" x="40" y="390">
-              main → Release → workflow_run → Deploy · ZAP hors chemin critique push
-            </text>
-          </svg>
+          <div class="flow-map">
+            <div class="flow-row">
+              <span class="flow-node accent">Push / PR</span>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <span class="flow-node">CI</span>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <span class="flow-node">Security</span>
+            </div>
+            <div class="flow-row">
+              <span class="flow-node muted">merge main</span>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <span class="flow-node accent">Release Image</span>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <span class="flow-node">Registry + Cosign</span>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <span class="flow-node">Deploy</span>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <span class="flow-node">Runtime</span>
+            </div>
+            <div class="flow-row">
+              <span class="flow-node muted">ZAP (cron / manuel)</span>
+              <span class="flow-arrow" aria-hidden="true">·</span>
+              <span class="flow-node muted">hors chemin critique du push</span>
+            </div>
+          </div>
+          <p class="arch-caption">main → Release → workflow_run → Deploy · ZAP en parallèle, hors gate push</p>
         </div>
       </div>
 
@@ -426,7 +400,7 @@
       </div>
 
       <div class="arch-block" data-reveal>
-        <h3>3 · Runtime VPS (derrière le proxy)</h3>
+        <h3>3 · Runtime (derrière le reverse proxy)</h3>
         <div class="arch-canvas runtime-grid">
           <div class="rt-box edge">
             <strong>Edge</strong>
@@ -466,7 +440,7 @@
           Le portfolio doit montrer la <em>chaîne</em>, pas un second monolithe React
           à maintenir. Static HTML = surface d’attaque minimale, build trivial,
           même Dockerfile multi-stage discipline (user non-root, read-only, healthcheck).
-          Tu swaps <code>app/</code> pour ton vrai service ; tu gardes
+          Vous remplacez <code>app/</code> par votre vrai service ; vous gardez
           <code>.github/</code> + <code>deploy/</code>.
         </p>
 
@@ -488,7 +462,7 @@
 
         <h3>Trivy avant push, pas « on verra au runtime »</h3>
         <p>
-          Si Harbor contient déjà l’image vulnérable, tu as perdu. Gate image
+          Si Harbor contient déjà l’image vulnérable, vous avez perdu. Gate image
           HIGH/CRITICAL fail-closed sur le candidat local. SARIF pour la piste
           d’audit dans GitHub Security.
         </p>
@@ -599,13 +573,52 @@
     <!-- ========== REUSE / INTEGRATE ========== -->
     <section class="panel" id="panel-reuse" role="tabpanel" aria-labelledby="tab-reuse" data-panel="reuse" hidden>
       <article class="prose">
-        <h2>Intégrer la supply chain dans ton projet</h2>
+        <h2>Intégrer la supply chain dans votre projet</h2>
         <p>
-          Tu ne réécris pas la chaîne. Tu <strong>greffes</strong> la colonne vertébrale
-          sur ton app (Node, Go, static, peu importe) et tu adaptes les noms.
-          Voici le mode d’emploi que je donnerais à un collègue qui démarre lundi.
+          Vous ne réécrivez pas la chaîne. Vous <strong>greffez</strong> la colonne
+          vertébrale sur votre application (Node, Go, static, peu importe) et vous
+          adaptez les noms, le registry et la cible d’exécution. Ce kit est un
+          modèle de référence — Harbor + VPS + Nginx Proxy Manager sont <em>un</em>
+          déploiement possible, pas une obligation.
         </p>
       </article>
+
+      <div class="adapt-grid" aria-label="Variantes d’adaptation">
+        <article class="adapt-card">
+          <h3>Registry</h3>
+          <p>
+            Harbor, GHCR, ECR, GCR… le contrat reste le même : push d’une image
+            adressable par digest, signature Cosign, verify avant deploy. Remplacez
+            les secrets <code>HARBOR_*</code> et les scripts de login par l’équivalent
+            de votre registry.
+          </p>
+        </article>
+        <article class="adapt-card">
+          <h3>Cible d’exécution</h3>
+          <p>
+            VPS Docker, VM cloud, ECS, Cloud Run, Kubernetes… le Release produit
+            toujours une image signée. Seul le job Deploy change : SSH + Compose,
+            ou <code>kubectl set image</code>, ou un service cloud qui tire le digest.
+          </p>
+        </article>
+        <article class="adapt-card">
+          <h3>Ingress / reverse proxy</h3>
+          <p>
+            Nginx Proxy Manager, Traefik, Caddy, ALB, Ingress NGINX : l’app n’écoute
+            qu’en interne. Branchez l’upstream sur le nom DNS Docker (ou le Service)
+            et le port interne — sans republier <code>:80</code> sur l’hôte si le
+            proxy le tient déjà.
+          </p>
+        </article>
+        <article class="adapt-card">
+          <h3>Qualité &amp; SAST</h3>
+          <p>
+            Sonar, CodeQL, coverage : activez ce qui correspond à votre stack.
+            Secrets absents = skip explicite. Secrets présents = gate fail-closed.
+            Alignez CodeQL sur le vrai langage du dépôt.
+          </p>
+        </article>
+      </div>
 
       <div class="pipeline" id="integrate-steps">
         <article class="step" data-reveal>
@@ -617,207 +630,168 @@
             Depuis
             <a href="https://github.com/barthez-kenwou/supply-chain-pipeline"
               rel="noopener noreferrer">supply-chain-pipeline</a>,
-            copie dans ton repo :
+            copiez dans votre dépôt :
           </p>
           <ul>
             <li><code>.github/workflows/</code> · <code>.github/scripts/</code> · <code>dependabot.yml</code> ·
               <code>zap-rules.tsv</code></li>
-            <li><code>deploy/remote-deploy.sh</code> · <code>deploy/smoke-test.sh</code></li>
-            <li><code>docker-compose.yml</code> (+ <code>docker-compose.local.yml</code> si tu veux le même modèle
-              local)</li>
+            <li><code>deploy/remote-deploy.sh</code> · <code>deploy/smoke-test.sh</code> (si vous déployez par SSH)</li>
+            <li><code>docker-compose.yml</code> si le modèle Compose vous convient</li>
           </ul>
           <p class="why">
-            <strong>Ce que tu ne copies pas forcément :</strong> mon <code>app/</code> vitrine.
-            Remplace-le par ton Dockerfile / ton service. Garde un endpoint
-            <code>/health</code> (ou adapte les scripts).
+            <strong>Ce que vous ne copiez pas forcément :</strong> le dossier
+            <code>app/</code> vitrine. Remplacez-le par votre Dockerfile / service.
+            Conservez un endpoint <code>/health</code> (ou adaptez les scripts).
           </p>
         </article>
 
         <article class="step" data-reveal>
           <header>
             <span class="step-id">Étape 02</span>
-            <h3>Renommer pour ton produit</h3>
+            <h3>Renommer pour votre produit</h3>
           </header>
-          <p>Cherche-remplace (grep) ces identifiants :</p>
+          <p>Recherchez-remplacez ces identifiants :</p>
           <ul class="tool-row">
             <li><code>IMAGE_NAME</code> → ex. <code>mon-api</code></li>
-            <li><code>supply-chain-web</code> → nom du conteneur Compose</li>
+            <li><code>supply-chain-web</code> → nom du conteneur / service</li>
             <li><code>sonar.projectKey</code></li>
             <li>titres Slack / summaries</li>
-            <li>environment <code>production</code> (si tu en as plusieurs)</li>
+            <li>environment <code>production</code> (si vous en avez plusieurs)</li>
           </ul>
           <p>
-            Si ton app est Node (comme ZENORA) : remplace
-            <code>reusable-quality.yml</code> par la variante lint/test/build/coverage.
-            Si static / binaire : garde le pattern Hadolint + build image + health.
-          </p>
-          <p class="why">
-            <strong>CodeQL :</strong> aligne <code>languages</code> sur ton vrai code
-            (<code>javascript-typescript</code>, <code>go</code>, <code>actions</code>…).
-            Un mauvais langage = gate rouge pour rien.
+            Application Node : remplacez <code>reusable-quality.yml</code> par
+            lint / test / build / coverage. Static ou binaire : conservez Hadolint +
+            build image + health.
           </p>
         </article>
 
         <article class="step" data-reveal>
           <header>
             <span class="step-id">Étape 03</span>
-            <h3>Préparer Harbor</h3>
+            <h3>Brancher votre registry</h3>
           </header>
-          <ol class="flow-list">
-            <li>Projet Harbor créé (ex. <code>acme</code>).</li>
-            <li>Robot account avec push + pull.</li>
-            <li><strong>Cosign deployment security = OFF</strong> si tu signes en keyless GitHub (sinon pulls 412).
-              L’enforcement reste <code>cosign verify</code> dans Deploy.</li>
-          </ol>
-          <p>Secrets <strong>repo</strong> GitHub :</p>
-          <ul class="tool-row">
-            <li><code>HARBOR_REGISTRY</code></li>
-            <li><code>HARBOR_PROJECT</code></li>
-            <li><code>HARBOR_USERNAME</code></li>
-            <li><code>HARBOR_PASSWORD</code></li>
-          </ul>
+          <p><strong>Harbor (référence du kit)</strong> — secrets <code>HARBOR_REGISTRY</code>,
+            <code>HARBOR_PROJECT</code>, <code>HARBOR_USERNAME</code>, <code>HARBOR_PASSWORD</code>.
+            Host only, lowercase, sans <code>https://</code>. Cosign project policy OFF
+            si vous signez en keyless GitHub (sinon pulls HTTP 412).</p>
+          <p><strong>GHCR</strong> — authentifiez avec <code>GITHUB_TOKEN</code> /
+            <code>packages: write</code>, poussez vers
+            <code>ghcr.io/&lt;org&gt;/&lt;image&gt;</code>, signez le digest, vérifiez
+            avant deploy. Adaptez les noms de secrets dans Release / Deploy.</p>
+          <p><strong>ECR / autre cloud</strong> — login via OIDC ou clés IAM, même
+            séquence : build → scan → push digest → Cosign → verify → rollout.</p>
           <p class="why">
-            <code>HARBOR_REGISTRY</code> = host only, lowercase, <strong>sans</strong>
-            <code>https://</code> (ex. <code>harbor.example.com</code>).
+            Le kit livre aussi un artifact <code>release-image</code> (<code>docker save</code>)
+            pour les cas où le registry bloque le pull (ex. Harbor 412) : utile en VPS,
+            souvent inutile sur un orchestrateur cloud qui tire directement le digest.
           </p>
         </article>
 
         <article class="step" data-reveal>
           <header>
             <span class="step-id">Étape 04</span>
-            <h3>Préparer le VPS + reverse proxy</h3>
+            <h3>Choisir où tourne la prod</h3>
           </header>
-          <ol class="flow-list">
-            <li>Docker + Compose installés ; user SSH dans le groupe docker.</li>
-            <li>Réseau partagé avec le proxy : <code>docker network create web-proxy</code> (ou le nom que tu choisis).
-            </li>
-            <li>Nginx Proxy Manager / Traefik / Caddy : upstream <code>TON_CONTENEUR:8080</code> (ou ton port interne)
-              sur ce réseau — <strong>pas</strong> de bind hôte <code>:80</code> sur l’app.</li>
-            <li>Répertoire app sur le serveur (ex. <code>/opt/mon-projet</code>) — le workflow y scp compose + scripts.
-            </li>
-          </ol>
+          <p><strong>VPS + Compose (référence)</strong> — Docker, réseau partagé avec le
+            reverse proxy (<code>PROXY_NETWORK</code>), upstream
+            <code>CONTENEUR:port</code>, secrets SSH d’environment
+            <code>production</code>.</p>
+          <p><strong>Cloud managé</strong> — remplacez le job Deploy SSH par le rollout
+            natif (ECS task definition, Cloud Run revision, Helm/Argo, etc.) en
+            gardant <code>cosign verify</code> avant le basculement.</p>
+          <p><strong>Kubernetes</strong> — image par digest dans le manifeste, admission
+            éventuelle (Kyverno/Gatekeeper) + verify CI ; le smoke devient un probe
+            cluster plutôt qu’un curl sur le réseau Docker d’un VPS.</p>
           <p class="why">
-            Smoke qui compte = curl depuis le réseau Docker du proxy.
-            Le HTTPS public peut 403 (Cloudflare) : exception <code>/health</code> si tu veux le smoke edge.
+            Peu importe la cible : prod = digest, jamais <code>latest</code> ; verify
+            avant exposition ; health / rollback avec preuve.
           </p>
         </article>
 
         <article class="step" data-reveal>
           <header>
             <span class="step-id">Étape 05</span>
-            <h3>Secrets &amp; vars environment <code>production</code></h3>
+            <h3>Secrets, protections, premier vert</h3>
           </header>
-          <p>GitHub → Settings → Environments → <code>production</code> (branches : <code>main</code> only) :</p>
-          <ul class="tool-row">
-            <li><code>DEPLOY_SSH_HOST</code></li>
-            <li><code>DEPLOY_SSH_USER</code></li>
-            <li><code>DEPLOY_SSH_PORT</code></li>
-            <li><code>DEPLOY_SSH_KEY</code></li>
-            <li><code>DEPLOY_APP_DIR</code></li>
-            <li><code>DEPLOY_SSH_KNOWN_HOSTS</code></li>
-          </ul>
-          <pre class="code-block">ssh-keyscan -p "$PORT" "$HOST"
+          <ol class="flow-list">
+            <li>Environment GitHub <code>production</code> (branches <code>main</code> only) si vous déployez depuis Actions.</li>
+            <li>Branch protection : checks <strong>CI summary</strong> + <strong>Security summary</strong>.</li>
+            <li>Optionnel : Sonar (<code>SONAR_*</code>), Slack, ZAP schedule.</li>
+            <li>Feature branch → CI ; merge <code>main</code> → Release → Deploy.</li>
+          </ol>
+          <pre class="code-block"># VPS / SSH — example
+ssh-keyscan -p "$PORT" "$HOST"
 # coller la sortie complète dans DEPLOY_SSH_KNOWN_HOSTS</pre>
-          <p>Variables d’environment :</p>
-          <ul class="tool-row">
-            <li><code>PROXY_NETWORK</code> (défaut <code>web-proxy</code>)</li>
-            <li><code>PUBLIC_BASE_HOST</code> (hostname public)</li>
-          </ul>
-          <p>
-            Optionnel repo : <code>SONAR_HOST_URL</code> + <code>SONAR_TOKEN</code>,
-            <code>SLACK_WEBHOOK_URL</code>.
-          </p>
         </article>
 
         <article class="step" data-reveal>
           <header>
             <span class="step-id">Étape 06</span>
-            <h3>Protéger <code>main</code> + premier vert</h3>
-          </header>
-          <ol class="flow-list">
-            <li>Branch protection : checks requis <strong>CI summary</strong> + <strong>Security summary</strong>.</li>
-            <li>Actions : permissions workflows en lecture/écriture (Release a besoin d’artifacts / attestations).</li>
-            <li>Push sur une branche feature → valider CI seul.</li>
-            <li>Merge <code>main</code> → Release (image + Cosign) → Deploy auto via <code>workflow_run</code>.</li>
-          </ol>
-          <p class="why">
-            Premier Deploy : vérifie les logs SSH (mux), le health conteneur, puis le smoke
-            réseau proxy. Si Harbor 412 au pull : le kit livre déjà l’artifact
-            <code>release-image</code> (<code>docker load</code>) après verify.
-          </p>
-        </article>
-
-        <article class="step" data-reveal>
-          <header>
-            <span class="step-id">Étape 07</span>
             <h3>Checklist « c’est en prod »</h3>
           </header>
           <ul class="check-grid">
-            <li>Image Harbor taguée <code>sha-…</code> + digest signé Cosign</li>
-            <li>Conteneur healthy sur le réseau proxy</li>
-            <li><code>/health</code> répond OK en interne</li>
-            <li>Rollback testé au moins une fois (health KO volontaire)</li>
-            <li>Badges CI / Security / Release sur ton README</li>
-            <li>Personne ne deploy <code>latest</code> à la main</li>
+            <li>Image registry taguée + digest signé Cosign</li>
+            <li>Runtime healthy (conteneur, tâche ou pods)</li>
+            <li><code>/health</code> (ou probe équivalent) OK en interne</li>
+            <li>Rollback testé au moins une fois</li>
+            <li>Badges CI / Security / Release sur votre README</li>
+            <li>Personne ne déploie <code>latest</code> à la main</li>
           </ul>
         </article>
       </div>
 
       <article class="prose">
-        <h3>Stack typique</h3>
+        <h3>Stack de référence (ce dépôt)</h3>
         <table class="stack">
-          <caption>Briques de la stack et leur rôle</caption>
+          <caption>Briques utilisées ici — substituables</caption>
           <thead>
             <tr>
               <th scope="col">Brique</th>
               <th scope="col">Rôle</th>
+              <th scope="col">Alternatives courantes</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>GitHub Actions</td>
               <td>orchestration fail-closed</td>
+              <td>GitLab CI, Forgejo Actions</td>
             </tr>
             <tr>
               <td>Harbor</td>
-              <td>registry OCI + signatures</td>
+              <td>registry OCI + politiques</td>
+              <td>GHCR, ECR, GCR, Artifactory</td>
             </tr>
             <tr>
               <td>Cosign keyless</td>
               <td>signature OIDC</td>
+              <td>clés Cosign, Notation</td>
             </tr>
             <tr>
               <td>Trivy</td>
               <td>fs, config, image gates</td>
-            </tr>
-            <tr>
-              <td>CodeQL / ZAP</td>
-              <td>SAST / DAST</td>
-            </tr>
-            <tr>
-              <td>Syft (SBOM)</td>
-              <td>inventaire SPDX</td>
+              <td>Grype, Snyk, Scout</td>
             </tr>
             <tr>
               <td>Compose + NPM</td>
-              <td>runtime derrière proxy</td>
+              <td>runtime VPS derrière proxy</td>
+              <td>Traefik, Caddy, K8s Ingress, ALB</td>
             </tr>
           </tbody>
         </table>
 
-        <h3>Doc technique</h3>
+        <h3>Documentation technique</h3>
         <ul>
           <li><a href="https://github.com/barthez-kenwou/supply-chain-pipeline/blob/main/.github/README.md"
-              rel="noopener noreferrer">Deep-dive <code>.github/README.md</code></a> — secrets, mermaid, séquences</li>
-          <li><a href="https://github.com/barthez-kenwou/supply-chain-pipeline" rel="noopener noreferrer">Code source du
-              kit</a></li>
+              rel="noopener noreferrer">Deep-dive <code>.github/README.md</code></a> — secrets, diagrammes, séquences</li>
+          <li><a href="https://github.com/barthez-kenwou/supply-chain-pipeline" rel="noopener noreferrer">Code source du kit</a></li>
           <li><a href="https://zenora360.com" rel="noopener noreferrer">Preuve prod · zenora360.com</a></li>
         </ul>
       </article>
     </section>
   </main>
 
-  <footer class="site-foot">
+  <footer class="site-footer">
     <p>
       Conçu et opéré par
       <a href="https://barthez-kenwou.dev/" rel="noopener noreferrer">Barthez Kenwou</a>

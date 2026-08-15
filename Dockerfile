@@ -20,7 +20,9 @@ RUN apk upgrade --no-cache || true; \
     chown -R appuser:appgroup /tmp/nginx
 
 COPY app/nginx.conf /etc/nginx/conf.d/default.conf
-COPY app/index.html app/styles.css app/app.js app/analytics.js app/plausible.js /usr/share/nginx/html/
+COPY app/index.html app/styles.css app/fonts.css app/app.js app/analytics.js /usr/share/nginx/html/
+COPY app/fonts/ /usr/share/nginx/html/fonts/
+COPY app/assets/ /usr/share/nginx/html/assets/
 
 RUN chown -R appuser:appgroup /usr/share/nginx/html && \
     chown -R appuser:appgroup /var/cache/nginx && \

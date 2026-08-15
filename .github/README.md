@@ -87,7 +87,7 @@ flowchart TB
 
   subgraph dep_wf["Deploy"]
     RES["resolve tag + digest"]
-    VER["cosign verify @sha256"]
+    VER["cosign verify digest"]
     SSH["SSH ControlMaster<br/>scp + remote-deploy + smoke"]
     RES --> VER --> SSH
   end
@@ -142,10 +142,10 @@ sequenceDiagram
   Rel->>Rel: upload release-metadata.json
 
   Rel-->>Dep: workflow_run success
-  Dep->>Har: cosign verify repo@sha256:…
+  Dep->>Har: cosign verify repo digest
   Dep->>VPS: SSH mux unique session
   Note over Dep,VPS: known_hosts piné · ControlMaster
-  VPS->>Har: compose pull IMAGE_REF=@sha256
+  VPS->>Har: compose pull IMAGE_REF by digest
   VPS->>VPS: up --force-recreate + /health
   alt health KO
     VPS->>VPS: rollback + re-test health
@@ -179,7 +179,7 @@ flowchart LR
   end
 
   subgraph registry["Registry"]
-    HAR[(Harbor<br/>image@sha256)]
+    HAR["Harbor<br/>image digest"]
   end
 
   U --> CF --> NPM
@@ -233,14 +233,14 @@ flowchart LR
 
 ## Reproduire sur un autre projet
 
-1. Copier `.github/` + `deploy/` (+ compose si le modèle proxy te va).
+1. Copier `.github/` + `deploy/` (+ compose si le modèle proxy vous convient).
 2. Adapter : `IMAGE_NAME`, `sonar.projectKey`, titres Slack, nom d’environment.
 3. Créer les secrets ci-dessous.
 4. Brancher le proxy : `PROXY_NETWORK` + upstream `container:port`.
 5. Branch protection : checks **`CI summary`** + **`Security summary`** ; env deploy = `main` only.
 6. Premier Release sur `main` → Deploy auto.
 
-Tu ne réécris pas la chaîne. Tu **personnalises** la colonne vertébrale.
+Vous ne réécrivez pas la chaîne. Vous **personnalisez** la colonne vertébrale.
 
 ### Check-list premier run
 
