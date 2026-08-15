@@ -43,6 +43,8 @@ jobs:
           test -f app/index.html
           test -f app/styles.css
           test -f app/app.js
+          test -f app/analytics.js
+          test -f app/plausible.js
           test -f app/nginx.conf
           grep -q 'location = /health' app/nginx.conf
           grep -q 'listen 8080' app/nginx.conf
