@@ -225,7 +225,8 @@ flowchart LR
 5. Rollback avec preuve (`rollback healthy` / `rollback failed`).
 6. Actions critiques pinées **SHA**.
 7. Harbor : digest via RepoDigests locaux (pas de `crane digest` GET). Signer `${REPO}@${DIGEST}`.  
-   **Ne pas** activer le toggle projet Harbor « Cosign » (deployment security) : il bloque le GET manifesto non signé dont `cosign sign` a besoin (œuf/poule). La vérif réelle reste dans Deploy.
+   **Ne pas** activer le toggle projet Harbor « Cosign » (deployment security) : il bloque le GET manifesto non signé dont `cosign sign` a besoin (œuf/poule). La vérif réelle reste dans Deploy.  
+   Provenance GitHub Attestations : `push-to-registry: false` (évite le 412 Harbor sur upload OCI).
 
 ---
 

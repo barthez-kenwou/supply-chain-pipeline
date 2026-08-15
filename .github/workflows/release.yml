@@ -243,7 +243,10 @@ jobs:
         with:
           subject-name: ${{ env.REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+          # Harbor Cosign deployment policy returns 412 on registry GET/PUT used by
+          # OCI attestation upload. Keep provenance on GitHub Attestations instead;
+          # deploy gate remains cosign verify on digest.
+          push-to-registry: false
 
       - name: Write release metadata artifact
         run: |
