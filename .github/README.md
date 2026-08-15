@@ -137,8 +137,8 @@ sequenceDiagram
   Rel->>Rel: Trivy image gate
   Note over Rel: Échec ici = aucun push Harbor
   Rel->>Har: docker push …:sha-xxxxxxx
-  Rel->>Har: crane digest → sha256:…
-  Rel->>Har: cosign sign + attach SBOM
+  Rel->>Rel: digest via RepoDigests (no crane GET)
+  Rel->>Har: cosign sign (docker-daemon://) + attach SBOM
   Rel->>Rel: upload release-metadata.json
 
   Rel-->>Dep: workflow_run success
@@ -218,12 +218,13 @@ flowchart LR
 
 ## Principes (non négociables)
 
-1. Même toolchain partout (ici Node 22 + npm).
+1. Même discipline partout (qualité → scan image → sign → digest deploy).
 2. Aucune image registry tant que Trivy image HIGH/CRITICAL n’est pas vert.
 3. Prod = **digest** ; `sha-*` = alias ; `latest` refusé au deploy.
 4. Cosign verify **avant** SSH.
 5. Rollback avec preuve (`rollback healthy` / `rollback failed`).
 6. Actions critiques pinées **SHA**.
+7. Harbor Cosign policy : digest résolu en local + `cosign sign docker-daemon://…` (pas de GET manifesto non signé).
 
 ---
 

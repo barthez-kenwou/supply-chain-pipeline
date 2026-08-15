@@ -149,7 +149,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript]
+        # Static nginx demo: no JS/TS sources. Scan GitHub Actions YAML instead.
+        language: [actions]
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -239,7 +240,7 @@ jobs:
             fi
             echo ""
             echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "- Artefacts: Trivy SARIF (Security alerts), npm-audit-report, ZAP (schedule/manual)."
+            echo "- Artefacts: Trivy SARIF (Security alerts), ZAP (schedule/manual)."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ needs.trivy-fs.result }}" != "success" ] || [ "${{ needs.codeql.result }}" != "success" ]; then

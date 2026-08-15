@@ -87,8 +87,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - name: Install crane
-        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Docker metadata labels
         id: meta
@@ -148,6 +148,9 @@ jobs:
             docker tag "${LOCAL_TAG}" "${REPO}:${{ github.ref_name }}"
           fi
 
+      # Harbor "cosign" project policy blocks unsigned manifest GET/HEAD.
+      # Resolve digest from local RepoDigests after push, sign immediately,
+      # then do any registry reads (verify / attach / attest).
       - name: Push image tags
         id: push
         shell: bash
@@ -175,10 +178,17 @@ jobs:
           }
 
           push_with_retry "${REPO}:${IMAGE_TAG}"
-          DIGEST="$(crane digest "${REPO}:${IMAGE_TAG}")"
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
-          echo "Resolved digest: $DIGEST"
+
+          DIGEST="$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "${REPO}:${IMAGE_TAG}" \
+            | awk -F@ -v repo="${REPO}" '$1 == repo { print $2; exit }')"
+          if [[ ! "${DIGEST}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Could not resolve digest from local RepoDigests after push (avoid crane GET under cosign policy)."
+            docker image inspect "${REPO}:${IMAGE_TAG}" || true
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "DIGEST=${DIGEST}" >> "$GITHUB_ENV"
+          echo "Resolved digest (local RepoDigests): ${DIGEST}"
 
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             push_with_retry "${REPO}:latest"
@@ -187,18 +197,13 @@ jobs:
             push_with_retry "${REPO}:${{ github.ref_name }}"
           fi
 
-      - name: Generate SBOM (SPDX)
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
-        with:
-          image: ${{ env.REPO }}@${{ steps.push.outputs.digest }}
-          format: spdx-json
-          output-file: sbom.spdx.json
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
-
       - name: Sign image (keyless OIDC)
-        run: cosign sign --yes "${REPO}@${DIGEST}"
+        run: |
+          set -euo pipefail
+          # Prefer docker-daemon:// so Cosign builds the payload from the local image
+          # and does not GET the unsigned manifest (Harbor Cosign project policy →
+          # PROJECTPOLICYVIOLATION until a signature exists).
+          cosign sign --yes "docker-daemon://${REPO}:${IMAGE_TAG}"
 
       - name: Verify image signature
         run: |
@@ -206,6 +211,14 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release.yml@.*" \
             "${REPO}@${DIGEST}"
+
+      # SBOM from the local candidate — no registry pull of unsigned/just-signed manifest.
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: supply-chain-web:ci-candidate
+          format: spdx-json
+          output-file: sbom.spdx.json
 
       - name: Attach SBOM to image
         run: cosign attach sbom --sbom sbom.spdx.json "${REPO}@${DIGEST}"
