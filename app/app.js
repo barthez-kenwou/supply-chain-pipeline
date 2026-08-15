@@ -57,11 +57,11 @@
   });
 
   document.querySelectorAll("[data-tab]").forEach((el) => {
-    if (el.getAttribute("role") === "tab") {
+    if (el.role === "tab") {
       return;
     }
     el.addEventListener("click", (event) => {
-      const id = el.getAttribute("data-tab");
+      const id = el.dataset.tab;
       if (!id) {
         return;
       }
@@ -74,7 +74,7 @@
   const known = panels.some((panel) => panel.dataset.panel === initial);
   activate(known ? initial : "overview", { pushHash: false });
 
-  window.addEventListener("hashchange", () => {
+  globalThis.addEventListener("hashchange", () => {
     const id = location.hash.replace("#", "");
     if (panels.some((panel) => panel.dataset.panel === id)) {
       activate(id, { pushHash: false });
