@@ -67,6 +67,54 @@ jobs:
           config: .hadolint.yaml
           failure-threshold: warning
 
+  sonar:
+    name: SonarQube
+    # When SONAR_* secrets exist: quality gate is fail-closed (sonar.qualitygate.wait).
+    # When secrets are absent: job succeeds after an explicit skip.
+    if: >
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'develop'))
+    needs:
+      - quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      ran: ${{ steps.sonar-ready.outputs.enabled }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Sonar secrets
+        id: sonar-ready
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SonarQube secrets not configured — skipping (configure SONAR_TOKEN + SONAR_HOST_URL to enforce QG)."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "SonarQube enabled — quality gate will block on failure."
+          fi
+
+      - name: SonarQube scan (fail-closed quality gate)
+        if: steps.sonar-ready.outputs.enabled == 'true'
+        # Community Build: do NOT pass sonar.branch.name / sonar.pullrequest.*
+        # (those require Developer Edition+).
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=supply-chain-demo
+            -Dsonar.sources=app,deploy,.github/scripts
+            -Dsonar.exclusions=**/*.md,**/node_modules/**
+            -Dsonar.qualitygate.wait=true
+
   ci-summary:
     name: CI summary
     if: always()
@@ -74,6 +122,7 @@ jobs:
       - quality
       - secret-scan
       - dockerfile-lint
+      - sonar
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -87,6 +136,7 @@ jobs:
             echo "| quality | ${{ needs.quality.result }} |"
             echo "| secret-scan | ${{ needs.secret-scan.result }} |"
             echo "| dockerfile-lint | ${{ needs.dockerfile-lint.result }} |"
+            echo "| sonar | ${{ needs.sonar.result }} |"
             echo ""
             echo "- Ref: \`${{ github.ref_name }}\` · SHA: \`$(echo '${{ github.sha }}' | cut -c1-7)\`"
             echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -102,6 +152,13 @@ jobs:
               failed=1
             fi
           done
+
+          # Sonar: skipped when secrets absent / branch outside if; failure blocks when it ran.
+          if [ "${{ needs.sonar.result }}" = "failure" ]; then
+            echo "SonarQube quality gate failed."
+            failed=1
+          fi
+
           if [ "$failed" -ne 0 ]; then
             echo "CI gate failed."
             exit 1

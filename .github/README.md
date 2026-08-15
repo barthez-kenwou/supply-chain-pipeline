@@ -241,10 +241,11 @@ Tu ne réécris pas la chaîne. Tu **personnalises** la colonne vertébrale.
 ### Check-list premier run
 
 - [ ] Secrets Harbor + SSH + `DEPLOY_SSH_KNOWN_HOSTS`
+- [ ] `SONAR_HOST_URL` + `SONAR_TOKEN` + projet Sonar `supply-chain-demo`
 - [ ] `PROXY_NETWORK` = réseau du reverse proxy
 - [ ] Proxy → `container:port` (ex. `supply-chain-web:8080`)
 - [ ] Branch protection + env `production` (main only)
-- [ ] Sonar / Slack si besoin
+- [ ] Slack si besoin
 - [ ] Exception edge sur `/health` si smoke public souhaité
 
 ---
@@ -255,6 +256,12 @@ Tu ne réécris pas la chaîne. Tu **personnalises** la colonne vertébrale.
 `HARBOR_REGISTRY` · `HARBOR_PROJECT` · `HARBOR_USERNAME` · `HARBOR_PASSWORD`  
 (host only, lowercase, **pas** de `https://`)
 
+### CI — SonarQube (repo secrets)
+`SONAR_HOST_URL` · `SONAR_TOKEN`  
+Projet Sonar : clé `supply-chain-demo` (voir `sonar-project.properties`).  
+Absents → job skip explicite. Présents → `qualitygate.wait` **bloquant** sur `main` / `develop` / PR vers ces branches.  
+Community Build : pas de `sonar.branch.name` / `pullrequest.*`.
+
 ### Deploy — environment `production`
 `DEPLOY_SSH_HOST` · `DEPLOY_SSH_USER` · `DEPLOY_SSH_KEY` · `DEPLOY_SSH_PORT` · `DEPLOY_APP_DIR` · **`DEPLOY_SSH_KNOWN_HOSTS`**
 
@@ -264,7 +271,7 @@ ssh-keyscan -p "$PORT" "$HOST"
 ```
 
 ### Optionnel
-`SONAR_HOST_URL` + `SONAR_TOKEN` · `SLACK_WEBHOOK_URL` (**secret repo**, pas seulement l’env)
+`SLACK_WEBHOOK_URL` (**secret repo**, pas seulement l’env)
 
 ### Vars environment
 `PROXY_NETWORK` (défaut `web-proxy`) · `PUBLIC_BASE_HOST`

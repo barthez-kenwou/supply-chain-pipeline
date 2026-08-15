@@ -39,7 +39,7 @@ flowchart TB
 
 | Workflow | Role |
 | -------- | ---- |
-| `ci.yml` | Hadolint, gitleaks, build + `/health` smoke |
+| `ci.yml` | Hadolint, gitleaks, build + `/health`, SonarQube QG (si `SONAR_*`) |
 | `security.yml` | Trivy fs/config, CodeQL, ZAP (weekly / manual) |
 | `release.yml` | build → Trivy image → push → Cosign → SBOM → provenance |
 | `deploy.yml` | verify digest → SSH mux → pull → health / rollback → smoke |
