@@ -10,16 +10,30 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           set -euo pipefail
-          curl -fsS -u "${SONAR_TOKEN}:" \
-            "${SONAR_HOST_URL%/}/api/issues/search?componentKeys=supply-chain-demo&resolved=false&ps=100" \
-            | tee sonar-issues.json
+          HOST="${SONAR_HOST_URL%/}"
+          echo "Host host_len=${#HOST} starts_with_https=$([[ $HOST == https://* ]] && echo yes || echo no)"
+          # Prefer Bearer (SonarQube user tokens)
+          for auth in "Bearer ${SONAR_TOKEN}" "Basic $(printf '%s:' "$SONAR_TOKEN" | base64 -w0)"; do
+            echo "Trying auth scheme: ${auth%% *}"
+            code=$(curl -sS -o /tmp/sonar.json -w '%{http_code}' \
+              -H "Authorization: $auth" \
+              "${HOST}/api/issues/search?componentKeys=supply-chain-demo&resolved=false&ps=100" || true)
+            echo "HTTP $code"
+            head -c 300 /tmp/sonar.json; echo
+            if [ "$code" = "200" ]; then
+              break
+            fi
+          done
           python3 - <<'PY'
-          import json
-          d=json.load(open("sonar-issues.json"))
+          import json,sys
+          d=json.load(open("/tmp/sonar.json"))
+          if "errors" in d or "total" not in d:
+              print(d)
+              sys.exit(1)
           print("total", d.get("total"))
           for i in d.get("issues", []):
               print(f"{i.get('severity')}\t{i.get('type')}\t{i.get('rule')}\t{i.get('component','').split(':')[-1]}:{i.get('line')}\t{i.get('message')}")
           PY
-          curl -fsS -u "${SONAR_TOKEN}:" \
-            "${SONAR_HOST_URL%/}/api/qualitygates/project_status?projectKey=supply-chain-demo" \
+          curl -fsS -H "Authorization: Bearer ${SONAR_TOKEN}" \
+            "${HOST}/api/qualitygates/project_status?projectKey=supply-chain-demo" \
             | python3 -m json.tool
