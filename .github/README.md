@@ -138,7 +138,7 @@ sequenceDiagram
   Note over Rel: Échec ici = aucun push Harbor
   Rel->>Har: docker push …:sha-xxxxxxx
   Rel->>Rel: digest via RepoDigests (no crane GET)
-  Rel->>Har: cosign sign (docker-daemon://) + attach SBOM
+  Rel->>Har: cosign sign REPO@DIGEST + attach SBOM
   Rel->>Rel: upload release-metadata.json
 
   Rel-->>Dep: workflow_run success
@@ -224,7 +224,8 @@ flowchart LR
 4. Cosign verify **avant** SSH.
 5. Rollback avec preuve (`rollback healthy` / `rollback failed`).
 6. Actions critiques pinées **SHA**.
-7. Harbor Cosign policy : digest résolu en local + `cosign sign docker-daemon://…` (pas de GET manifesto non signé).
+7. Harbor : digest via RepoDigests locaux (pas de `crane digest` GET). Signer `${REPO}@${DIGEST}`.  
+   **Ne pas** activer le toggle projet Harbor « Cosign » (deployment security) : il bloque le GET manifesto non signé dont `cosign sign` a besoin (œuf/poule). La vérif réelle reste dans Deploy.
 
 ---
 
