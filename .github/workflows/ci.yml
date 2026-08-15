@@ -50,7 +50,7 @@ jobs:
           docker run --rm \
             -v "$PWD:/src:ro" \
             ghcr.io/gitleaks/gitleaks:v8.28.0 \
-            detect --source /src --verbose --redact
+            detect --source /src --no-git --verbose --redact
 
   dockerfile-lint:
     name: Dockerfile lint

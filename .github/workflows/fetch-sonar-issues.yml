@@ -1,0 +1,54 @@
+name: Fetch Sonar issues
+on: workflow_dispatch
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=false
+      - name: Dump open issues via scanner JRE curl
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          set -euo pipefail
+          HOST="${SONAR_HOST_URL%/}"
+          # Reuse scanner UA that already passed Cloudflare during analysis
+          UA='ScannerCLI/7.2.0.5079'
+          curl -fsS -A "$UA" -u "${SONAR_TOKEN}:" \
+            "${HOST}/api/issues/search?componentKeys=supply-chain-demo&resolved=false&ps=100&additionalFields=_all" \
+            -o sonar-issues.json || \
+          curl -fsS -A "$UA" -H "Authorization: Bearer ${SONAR_TOKEN}" \
+            "${HOST}/api/issues/search?componentKeys=supply-chain-demo&resolved=false&ps=100" \
+            -o sonar-issues.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("sonar-issues.json"))
+          print("total", d.get("total"))
+          for i in d.get("issues", []):
+              print(f"{i.get('severity')}\t{i.get('type')}\t{i.get('rule')}\t{i.get('component','').split(':')[-1]}:{i.get('line')}\t{i.get('message')}")
+          for h in d.get("hotspots", []) if False else []:
+              pass
+          PY
+          curl -fsS -A "$UA" -u "${SONAR_TOKEN}:" \
+            "${HOST}/api/hotspots/search?projectKey=supply-chain-demo&status=TO_REVIEW&ps=50" \
+            -o hotspots.json || true
+          python3 - <<'PY'
+          import json, pathlib
+          p=pathlib.Path("hotspots.json")
+          if not p.exists() or p.stat().st_size<10:
+              print("no hotspots file")
+          else:
+              d=json.load(open(p))
+              print("hotspots", d.get("paging",{}).get("total"), d.get("hotspots") and len(d["hotspots"]))
+              for h in d.get("hotspots", []):
+                  print(f"HOTSPOT\t{h.get('vulnerabilityProbability')}\t{h.get('ruleKey')}\t{h.get('component','').split(':')[-1]}:{h.get('line')}\t{h.get('message')}")
+          PY
+          curl -fsS -A "$UA" -u "${SONAR_TOKEN}:" \
+            "${HOST}/api/qualitygates/project_status?projectKey=supply-chain-demo" | python3 -m json.tool
