@@ -1,0 +1,25 @@
+name: Fetch Sonar issues
+on: workflow_dispatch
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List open issues for supply-chain-demo
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          set -euo pipefail
+          curl -fsS -u "${SONAR_TOKEN}:" \
+            "${SONAR_HOST_URL%/}/api/issues/search?componentKeys=supply-chain-demo&resolved=false&ps=100" \
+            | tee sonar-issues.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("sonar-issues.json"))
+          print("total", d.get("total"))
+          for i in d.get("issues", []):
+              print(f"{i.get('severity')}\t{i.get('type')}\t{i.get('rule')}\t{i.get('component','').split(':')[-1]}:{i.get('line')}\t{i.get('message')}")
+          PY
+          curl -fsS -u "${SONAR_TOKEN}:" \
+            "${SONAR_HOST_URL%/}/api/qualitygates/project_status?projectKey=supply-chain-demo" \
+            | python3 -m json.tool
