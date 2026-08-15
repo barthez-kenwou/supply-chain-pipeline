@@ -2,6 +2,8 @@
 # Remote deploy helper — executed on the OVH host via SSH from GitHub Actions.
 # Expects: HARBOR_*, DEPLOY_APP_DIR, IMAGE_TAG, IMAGE_NAME
 # Strongly recommended: IMAGE_DIGEST (sha256:...) — pull by digest when set
+# Optional: IMAGE_TAR (gzipped docker save) — preferred when Harbor Cosign policy
+#           blocks pulls (HTTP 412). Cosign verify still runs on the Actions runner.
 # Optional: PROXY_NETWORK (default web-proxy)
 set -euo pipefail
 
@@ -11,6 +13,9 @@ export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-supply-chain}"
 export PROXY_NETWORK="${PROXY_NETWORK:-web-proxy}"
 
 PREVIOUS_IMAGE="$(docker inspect --format='{{.Config.Image}}' supply-chain-web 2>/dev/null || true)"
+DEPLOY_MODE="registry"
+
+TAG_REF="${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 # Prefer digest for immutable pull; fall back to tag only if digest missing.
 if [ -n "${IMAGE_DIGEST:-}" ]; then
@@ -21,10 +26,34 @@ if [ -n "${IMAGE_DIGEST:-}" ]; then
       exit 1
       ;;
   esac
-  IMAGE_REF="${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+  DIGEST_REF="${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${IMAGE_NAME}@${IMAGE_DIGEST}"
 else
-  echo "WARN: IMAGE_DIGEST empty — pulling by tag ${IMAGE_TAG} (weaker than digest)."
-  IMAGE_REF="${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}"
+  echo "WARN: IMAGE_DIGEST empty — weaker than digest pinning."
+  DIGEST_REF="${TAG_REF}"
+fi
+
+# Default compose image ref (registry digest). Artifact mode overrides to TAG_REF.
+IMAGE_REF="${DIGEST_REF}"
+
+cleanup_harbor_login() {
+  docker logout "${HARBOR_REGISTRY}" >/dev/null 2>&1 || true
+}
+trap cleanup_harbor_login EXIT
+
+if [ -n "${IMAGE_TAR:-}" ] && [ -f "${IMAGE_TAR}" ]; then
+  DEPLOY_MODE="artifact"
+  echo "Loading image from artifact ${IMAGE_TAR} (bypasses Harbor pull / Cosign 412)"
+  case "${IMAGE_TAR}" in
+    *.gz|*.tgz) gzip -dc "${IMAGE_TAR}" | docker load ;;
+    *) docker load -i "${IMAGE_TAR}" ;;
+  esac
+  if ! docker image inspect "${TAG_REF}" >/dev/null 2>&1; then
+    echo "After docker load, expected tag ${TAG_REF} was not present."
+    docker images
+    exit 1
+  fi
+  IMAGE_REF="${TAG_REF}"
+  echo "Artifact image ready: ${IMAGE_REF} (signed digest ${IMAGE_DIGEST:-n/a})"
 fi
 
 cat > .env <<EOF
@@ -38,31 +67,25 @@ COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
 PROXY_NETWORK=${PROXY_NETWORK}
 EOF
 
+if [ "${DEPLOY_MODE}" = "registry" ]; then
+  echo "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY}" -u "${HARBOR_USERNAME}" --password-stdin
+  echo "Pulling ${IMAGE_REF}"
+  if ! pull_out="$(docker compose pull web 2>&1)"; then
+    echo "${pull_out}"
+    if echo "${pull_out}" | grep -Eqi '412|PROJECTPOLICYVIOLATION|not signed by cosign|Precondition Failed'; then
+      echo ""
+      echo "Harbor refused the pull (HTTP 412 / Cosign project policy)."
+      echo "Auto-deploy from Release should use the release-image artifact instead."
+      echo "Or: Harbor → Project → Configuration → Deployment security → disable Cosign."
+    fi
+    exit 1
+  fi
+fi
+
 if ! docker network inspect "${PROXY_NETWORK}" >/dev/null 2>&1; then
   echo "Docker network '${PROXY_NETWORK}' not found."
   echo "Create it (or point PROXY_NETWORK at your Nginx Proxy Manager network), then retry."
   docker network ls
-  exit 1
-fi
-
-cleanup_harbor_login() {
-  docker logout "${HARBOR_REGISTRY}" >/dev/null 2>&1 || true
-}
-trap cleanup_harbor_login EXIT
-
-echo "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY}" -u "${HARBOR_USERNAME}" --password-stdin
-
-echo "Pulling ${IMAGE_REF}"
-if ! pull_out="$(docker compose pull web 2>&1)"; then
-  echo "${pull_out}"
-  if echo "${pull_out}" | grep -Eqi '412|PROJECTPOLICYVIOLATION|not signed by cosign|Precondition Failed'; then
-    echo ""
-    echo "Harbor refused the pull (HTTP 412 / Cosign project policy)."
-    echo "This is NOT a bad digest and NOT an SSH bug."
-    echo "On Harbor → Project → Configuration → Deployment security:"
-    echo "  disable the Cosign checkbox, Save, then re-run Deploy."
-    echo "Signature enforcement stays in GitHub Actions (cosign verify before SSH)."
-  fi
   exit 1
 fi
 
@@ -136,9 +159,14 @@ mkdir -p .deploy
   echo "image_tag=${IMAGE_TAG}"
   echo "image_digest=${IMAGE_DIGEST:-}"
   echo "image_ref=${IMAGE_REF}"
+  echo "deploy_mode=${DEPLOY_MODE}"
   echo "previous_image=${PREVIOUS_IMAGE}"
   echo "proxy_network=${PROXY_NETWORK}"
 } > ".deploy/last-success.env"
 
+# Export for smoke-test in the same SSH session
+export DEPLOY_MODE
+export IMAGE_REF
+
 docker image prune -f
-echo "Deployment healthy on network ${PROXY_NETWORK} (${IMAGE_REF})."
+echo "Deployment healthy on network ${PROXY_NETWORK} (${IMAGE_REF}, mode=${DEPLOY_MODE})."

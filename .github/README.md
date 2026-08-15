@@ -225,8 +225,9 @@ flowchart LR
 5. Rollback avec preuve (`rollback healthy` / `rollback failed`).
 6. Actions critiques pinées **SHA**.
 7. Harbor : digest via RepoDigests locaux (pas de `crane digest` GET). Signer `${REPO}@${DIGEST}`.  
-   **Ne pas** activer le toggle projet Harbor « Cosign » (deployment security) : il bloque le GET manifesto non signé dont `cosign sign` a besoin (œuf/poule). La vérif réelle reste dans Deploy.  
-   Provenance GitHub Attestations : `push-to-registry: false` (évite le 412 Harbor sur upload OCI).
+   Si le projet Harbor a **Cosign deployment security** : les pulls VPS renvoient HTTP 412 (keyless GitHub non reconnu).  
+   Contournement kit : artifact `release-image` (`docker save`) → Deploy fait `docker load` après `cosign verify`.  
+   Alternative ops : désactiver le toggle Cosign Harbor. Provenance GH : `push-to-registry: false`.
 
 ---
 
@@ -245,7 +246,7 @@ Tu ne réécris pas la chaîne. Tu **personnalises** la colonne vertébrale.
 
 - [ ] Secrets Harbor + SSH + `DEPLOY_SSH_KNOWN_HOSTS`
 - [ ] `SONAR_HOST_URL` + `SONAR_TOKEN` + projet Sonar `supply-chain-demo`
-- [ ] **Harbor projet : Cosign (Deployment security) = OFF** — sinon pull/sign → HTTP 412
+- [ ] **Harbor Cosign 412** : soit toggle Cosign OFF, soit Deploy via artifact `release-image` (défaut auto après Release)
 - [ ] `PROXY_NETWORK` = réseau du reverse proxy
 - [ ] Proxy → `container:port` (ex. `supply-chain-web:8080`)
 - [ ] Branch protection + env `production` (main only)

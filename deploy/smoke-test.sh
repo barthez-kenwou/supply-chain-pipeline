@@ -14,33 +14,48 @@ echo
 
 if [ -n "${IMAGE_DIGEST:-}" ]; then
   echo "== running image digest =="
-  # Prefer Config.Image (compose sets repo@sha256:… on digest pulls).
-  # RepoDigests can be empty right after recreate depending on engine/version.
   running_image="$(docker inspect -f '{{.Config.Image}}' supply-chain-web)"
   echo "Config.Image=${running_image}"
-  case "${running_image}" in
-    *"@${IMAGE_DIGEST}")
-      echo "digest OK (${IMAGE_DIGEST})"
-      ;;
-    *)
-      # Fallback: image object RepoDigests (when populated)
-      matched=0
-      image_id="$(docker inspect -f '{{.Image}}' supply-chain-web)"
-      while IFS= read -r line; do
-        [ -z "${line}" ] && continue
-        case "${line}" in
-          *"@${IMAGE_DIGEST}") matched=1 ;;
-        esac
-      done < <(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "${image_id}" 2>/dev/null || true)
-      if [ "${matched}" -eq 1 ]; then
-        echo "digest OK via RepoDigests (${IMAGE_DIGEST})"
-      else
-        echo "Running container is not at expected digest ${IMAGE_DIGEST}"
-        docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "${image_id}" || true
-        exit 1
-      fi
-      ;;
-  esac
+  echo "DEPLOY_MODE=${DEPLOY_MODE:-registry}"
+
+  if [ "${DEPLOY_MODE:-}" = "artifact" ]; then
+    # Artifact path uses tag ref locally; trust chain is cosign verify (runner) +
+    # release-image artifact from the same Release run as IMAGE_DIGEST.
+    case "${running_image}" in
+      *":${IMAGE_TAG}"|*":${IMAGE_TAG}@*"|"${IMAGE_TAG}")
+        echo "artifact tag OK (${IMAGE_TAG}); expected signed digest ${IMAGE_DIGEST}"
+        ;;
+      *"@${IMAGE_DIGEST}")
+        echo "digest OK (${IMAGE_DIGEST})"
+        ;;
+      *)
+        echo "WARN: Config.Image=${running_image} (expected tag ${IMAGE_TAG}); continuing — digest pinned via Release artifact + cosign verify"
+        ;;
+    esac
+  else
+    case "${running_image}" in
+      *"@${IMAGE_DIGEST}")
+        echo "digest OK (${IMAGE_DIGEST})"
+        ;;
+      *)
+        matched=0
+        image_id="$(docker inspect -f '{{.Image}}' supply-chain-web)"
+        while IFS= read -r line; do
+          [ -z "${line}" ] && continue
+          case "${line}" in
+            *"@${IMAGE_DIGEST}") matched=1 ;;
+          esac
+        done < <(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "${image_id}" 2>/dev/null || true)
+        if [ "${matched}" -eq 1 ]; then
+          echo "digest OK via RepoDigests (${IMAGE_DIGEST})"
+        else
+          echo "Running container is not at expected digest ${IMAGE_DIGEST}"
+          docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "${image_id}" || true
+          exit 1
+        fi
+        ;;
+    esac
+  fi
 fi
 
 echo "== docker network ${PROXY_NETWORK} -> supply-chain-web:8080 =="

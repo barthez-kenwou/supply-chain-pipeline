@@ -266,6 +266,16 @@ jobs:
           print(json.dumps(meta, indent=2))
           PY
 
+      # Harbor "Cosign" deployment security returns 412 on docker pull even after
+      # keyless sign. Ship the exact local image as a GH artifact so Deploy can
+      # docker load on the VPS (cosign verify on digest still runs before SSH).
+      - name: Package image tarball for deploy
+        run: |
+          set -euo pipefail
+          docker save "${REPO}:${IMAGE_TAG}" | gzip -1 > release-image.tar.gz
+          printf '%s\n' "${DIGEST}" > release-image.digest
+          ls -lh release-image.tar.gz release-image.digest
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -275,6 +285,16 @@ jobs:
             sbom.spdx.json
             trivy-image.sarif
           retention-days: 30
+
+      - name: Upload release image (deploy payload)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-image
+          path: |
+            release-image.tar.gz
+            release-image.digest
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Job summary
         run: |
@@ -290,7 +310,7 @@ jobs:
             echo ""
             echo "Flow: build (local) → Trivy image gate → Harbor push → Cosign → SBOM → provenance"
             echo ""
-            echo "Artifacts: \`release-metadata\` (metadata + SBOM + Trivy SARIF), retention 30d."
+            echo "Artifacts: \`release-metadata\` + \`release-image\` (gzipped docker save for Deploy when Harbor pull is blocked by Cosign policy)."
           } >> "$GITHUB_STEP_SUMMARY"
 
   notify:

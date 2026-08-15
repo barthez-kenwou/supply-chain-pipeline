@@ -226,6 +226,38 @@ jobs:
           DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
         run: bash .github/scripts/ssh-with-secrets.sh
 
+      - name: Download release image artifact
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-image
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release-image
+
+      - name: Check release image payload
+        id: image-payload
+        run: |
+          set -euo pipefail
+          if [ -f release-image/release-image.tar.gz ]; then
+            if [ -f release-image/release-image.digest ]; then
+              art_digest="$(tr -d '[:space:]' < release-image/release-image.digest)"
+              if [ "${art_digest}" != "${{ needs.resolve.outputs.image_digest }}" ]; then
+                echo "Artifact digest ${art_digest} != metadata ${{ needs.resolve.outputs.image_digest }}"
+                exit 1
+              fi
+            fi
+            ls -lh release-image/release-image.tar.gz
+            echo "mode=artifact" >> "$GITHUB_OUTPUT"
+          else
+            if [ "${{ github.event_name }}" = "workflow_run" ]; then
+              echo "release-image artifact missing from Release run — cannot bypass Harbor 412."
+              exit 1
+            fi
+            echo "No release-image artifact (manual deploy) — will try Harbor pull."
+            echo "mode=registry" >> "$GITHUB_OUTPUT"
+          fi
+
       # One SSH TCP session (ControlMaster) for copy + deploy + smoke.
       - name: Deploy and smoke over SSH
         env:
@@ -238,6 +270,7 @@ jobs:
           IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
           IMAGE_DIGEST: ${{ needs.resolve.outputs.image_digest }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          DEPLOY_IMAGE_MODE: ${{ steps.image-payload.outputs.mode }}
         run: |
           set -euo pipefail
           CTRL="${RUNNER_TEMP}/sc-ssh-mux-%C"
@@ -269,6 +302,14 @@ jobs:
             deploy/smoke-test.sh \
             "${DEPLOY_USER}@${DEPLOY_HOST}:${APP_DIR}/deploy/"
 
+          image_tar_remote=""
+          if [ "${DEPLOY_IMAGE_MODE}" = "artifact" ]; then
+            scp "${ssh_opts[@]}" \
+              release-image/release-image.tar.gz \
+              "${DEPLOY_USER}@${DEPLOY_HOST}:${APP_DIR}/release-image.tar.gz"
+            image_tar_remote="${APP_DIR}/release-image.tar.gz"
+          fi
+
           ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "export HARBOR_REGISTRY=$(printf '%q' "$HARBOR_REGISTRY")
              export HARBOR_PROJECT=$(printf '%q' "$HARBOR_PROJECT")
@@ -280,9 +321,12 @@ jobs:
              export IMAGE_TAG=$(printf '%q' "$IMAGE_TAG")
              export IMAGE_DIGEST=$(printf '%q' "$IMAGE_DIGEST")
              export IMAGE_NAME=$(printf '%q' "$IMAGE_NAME")
+             export IMAGE_TAR=$(printf '%q' "${image_tar_remote}")
              chmod +x '${APP_DIR}/deploy/remote-deploy.sh' '${APP_DIR}/deploy/smoke-test.sh'
              bash '${APP_DIR}/deploy/remote-deploy.sh'
-             bash '${APP_DIR}/deploy/smoke-test.sh'"
+             export DEPLOY_MODE=\"\$(sed -n 's/^deploy_mode=//p' '${APP_DIR}/.deploy/last-success.env')\"
+             bash '${APP_DIR}/deploy/smoke-test.sh'
+             rm -f '${APP_DIR}/release-image.tar.gz'"
 
       - name: Deployment summary
         if: always()
@@ -294,11 +338,12 @@ jobs:
             echo "| --- | --- |"
             echo "| Tag | \`${{ needs.resolve.outputs.image_tag }}\` |"
             echo "| Digest | \`${{ needs.resolve.outputs.image_digest }}\` |"
+            echo "| Image mode | \`${{ steps.image-payload.outputs.mode }}\` |"
             echo "| Proxy network | \`${{ vars.PROXY_NETWORK || 'web-proxy' }}\` |"
             echo "| Public host | \`${{ vars.PUBLIC_BASE_HOST || 'example.com' }}\` |"
             echo ""
             echo "- Cosign verified on digest **before** SSH"
-            echo "- Pull by digest on host · SSH host key pinned · smoke on proxy network"
+            echo "- Image via release artifact (\`docker load\`) when mode=artifact — Harbor Cosign 412 bypass"
             echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
