@@ -1,0 +1,282 @@
+name: Security
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+  push:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+  schedule:
+    - cron: "22 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      zap_target_url:
+        description: "Optional URL for manual ZAP baseline scan"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  trivy-fs:
+    name: Trivy filesystem + config
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          cache: true
+          version: v0.74.0
+
+      - name: Trivy filesystem scan (gate)
+        id: trivy-fs
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          scanners: vuln
+          skip-setup-trivy: true
+
+      - name: Trivy filesystem SARIF
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          ignore-unfixed: true
+          scanners: vuln
+          limit-severities-for-sarif: true
+          skip-setup-trivy: true
+
+      - name: Upload Trivy filesystem SARIF
+        if: always() && hashFiles('trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Trivy config / IaC scan (gate)
+        id: trivy-config
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          skip-setup-trivy: true
+
+      - name: Trivy config SARIF
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          limit-severities-for-sarif: true
+          skip-setup-trivy: true
+
+      - name: Upload Trivy config SARIF
+        if: always() && hashFiles('trivy-config.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+      - name: Fail if a Trivy gate failed
+        if: always()
+        run: |
+          set -euo pipefail
+          fs="${{ steps.trivy-fs.outcome }}"
+          cfg="${{ steps.trivy-config.outcome }}"
+          echo "Trivy filesystem: ${fs}"
+          echo "Trivy config: ${cfg}"
+          if [ "$fs" != "success" ] || [ "$cfg" != "success" ]; then
+            echo "Trivy gate failed. See the table scans above for HIGH/CRITICAL findings."
+            exit 1
+          fi
+
+      - name: Production dependency audit (advisory)
+        continue-on-error: true
+        run: |
+          set +e
+          npm audit --omit=dev --json > npm-audit.json
+          STATUS=$?
+          set -e
+          {
+            echo "## npm audit (production deps)"
+            echo ""
+            echo "Exit code: $STATUS"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-audit-report
+          path: npm-audit.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  zap-baseline:
+    name: ZAP baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve target
+        id: target
+        run: |
+          TARGET="${{ inputs.zap_target_url }}"
+          if [ -z "$TARGET" ]; then
+            TARGET="https://zenora360.com"
+          fi
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Run baseline scan
+        run: |
+          docker run --rm \
+            -v "$PWD:/zap/wrk/:rw" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t "${{ steps.target.outputs.target }}" \
+            -c .github/zap-rules.tsv \
+            -r zap-baseline.html \
+            -J zap-baseline.json \
+            -x zap-baseline.xml \
+            -m 5 \
+            -I
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zap-baseline-report
+          path: |
+            zap-baseline.html
+            zap-baseline.json
+            zap-baseline.xml
+          retention-days: 30
+
+  security-summary:
+    name: Security summary
+    if: always()
+    needs:
+      - trivy-fs
+      - codeql
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write summary
+        run: |
+          {
+            echo "## Security gate"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | ------ |"
+            echo "| trivy-fs + config | ${{ needs.trivy-fs.result }} |"
+            echo "| codeql | ${{ needs.codeql.result }} |"
+            echo ""
+            if [ "${{ needs.trivy-fs.result }}" = "success" ] && [ "${{ needs.codeql.result }}" = "success" ]; then
+              echo "**Trivy** filesystem/config: no blocking HIGH/CRITICAL (unfixed ignored per policy)."
+              echo ""
+              echo "**CodeQL** \`security-extended\`: clean for this run."
+            else
+              echo "Open the failed job logs + SARIF on the Security tab for findings."
+            fi
+            echo ""
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Artefacts: Trivy SARIF (Security alerts), npm-audit-report, ZAP (schedule/manual)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ needs.trivy-fs.result }}" != "success" ] || [ "${{ needs.codeql.result }}" != "success" ]; then
+            exit 1
+          fi

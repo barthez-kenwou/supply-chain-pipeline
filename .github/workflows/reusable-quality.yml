@@ -1,0 +1,111 @@
+# Reusable quality gate — call from CI / Release / other products.
+name: Reusable quality
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: Node.js version
+        required: false
+        type: string
+        default: "22"
+      upload_dist:
+        description: Upload dist/ as artifact
+        required: false
+        type: boolean
+        default: false
+      run_coverage:
+        description: Collect coverage during tests
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: |
+          if [ "${{ inputs.run_coverage }}" = "true" ]; then
+            npm run test -- --coverage
+          else
+            npm run test
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Quality summary
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "## Quality gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f coverage/coverage-summary.json ]; then
+            python3 <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          total = json.loads(Path("coverage/coverage-summary.json").read_text()).get("total", {})
+
+          def pct(key):
+              value = total.get(key, {}).get("pct")
+              return f"{value}%" if value is not None else "n/a"
+
+          print("### Coverage")
+          print("")
+          print("| Metric | Value |")
+          print("| --- | --- |")
+          print("| Statements | **%s** |" % pct("statements"))
+          print("| Branches | **%s** |" % pct("branches"))
+          print("| Functions | **%s** |" % pct("functions"))
+          print("| Lines | **%s** |" % pct("lines"))
+          PY
+          else
+            echo "_No coverage/coverage-summary.json (coverage disabled or empty suite)._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo ""
+            echo "Artifact \`coverage-report\` retained when coverage ran."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage
+        if: always() && inputs.run_coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-report
+          path: coverage
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload build output
+        if: inputs.upload_dist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7

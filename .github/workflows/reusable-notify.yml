@@ -1,0 +1,66 @@
+# Optional Slack notification — never blocks the main pipeline.
+name: Reusable notify
+
+on:
+  workflow_call:
+    inputs:
+      status:
+        required: true
+        type: string
+      title:
+        required: true
+        type: string
+      environment:
+        required: false
+        type: string
+        default: production
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: false
+
+jobs:
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post Slack message
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          STATUS: ${{ inputs.status }}
+          TITLE: ${{ inputs.title }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "SLACK_WEBHOOK_URL not set — skipping notification."
+            exit 0
+          fi
+
+          COLOR="good"
+          ICON="✅"
+          if [ "$STATUS" != "success" ]; then
+            COLOR="danger"
+            ICON="🔥"
+          fi
+
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -fsS -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"attachments\": [{
+                \"color\": \"$COLOR\",
+                \"title\": \"$ICON $TITLE — $STATUS\",
+                \"title_link\": \"$RUN_URL\",
+                \"fields\": [
+                  {\"title\": \"Repository\", \"value\": \"${{ github.repository }}\", \"short\": true},
+                  {\"title\": \"Environment\", \"value\": \"$ENVIRONMENT\", \"short\": true},
+                  {\"title\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"short\": true},
+                  {\"title\": \"Commit\", \"value\": \"$SHORT_SHA\", \"short\": true},
+                  {\"title\": \"Actor\", \"value\": \"${{ github.actor }}\", \"short\": true},
+                  {\"title\": \"Run\", \"value\": \"${{ github.run_id }}\", \"short\": true}
+                ],
+                \"footer\": \"ZENORA DevSecOps\"
+              }]
+            }" \
+            "$SLACK_WEBHOOK_URL"

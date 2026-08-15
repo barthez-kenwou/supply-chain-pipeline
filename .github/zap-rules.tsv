@@ -1,0 +1,4 @@
+10038	WARN	(Content Security Policy Header Not Set)
+10098	IGNORE	(Cross-Domain Misconfiguration)
+10015	WARN	(Re-examine Cache-control Directives)
+90033	WARN	(Loosely Scoped Cookie)

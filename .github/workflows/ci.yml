@@ -1,0 +1,211 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/**"
+      - "hotfix/**"
+      - "release/**"
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  quality:
+    name: Quality
+    uses: ./.github/workflows/reusable-quality.yml
+    with:
+      node_version: "22"
+      upload_dist: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+      run_coverage: true
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        run: |
+          docker run --rm \
+            -v "$PWD:/src:ro" \
+            ghcr.io/gitleaks/gitleaks:v8.28.0 \
+            detect --source /src --verbose --redact
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: high
+
+  dockerfile-lint:
+    name: Dockerfile lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+          failure-threshold: warning
+
+  sonar:
+    name: SonarQube
+    # When SONAR_* secrets exist: quality gate is fail-closed (sonar.qualitygate.wait).
+    # When secrets are absent: job succeeds after an explicit skip.
+    if: >
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'develop'))
+    needs:
+      - quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      ran: ${{ steps.sonar-ready.outputs.enabled }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Sonar secrets
+        id: sonar-ready
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SonarQube secrets not configured — skipping (configure SONAR_TOKEN + SONAR_HOST_URL to enforce QG)."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "SonarQube enabled — quality gate will block on failure."
+          fi
+
+      - name: Setup Node
+        if: steps.sonar-ready.outputs.enabled == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.sonar-ready.outputs.enabled == 'true'
+        run: npm ci
+
+      - name: Test coverage
+        if: steps.sonar-ready.outputs.enabled == 'true'
+        run: npm run test -- --coverage
+
+      - name: SonarQube scan (fail-closed quality gate)
+        if: steps.sonar-ready.outputs.enabled == 'true'
+        # Community Build: do NOT pass sonar.branch.name / sonar.pullrequest.*
+        # (those require Developer Edition+).
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=ZENORA-frontend
+            -Dsonar.sources=src
+            -Dsonar.exclusions=**/dist/**,**/coverage/**,**/*.test.*,**/*.spec.*
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.qualitygate.wait=true
+  ci-summary:
+    name: CI summary
+    if: always()
+    needs:
+      - quality
+      - secret-scan
+      - dependency-review
+      - dockerfile-lint
+      - sonar
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write summary
+        run: |
+          {
+            echo "## CI gate"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | ------ |"
+            echo "| quality | ${{ needs.quality.result }} |"
+            echo "| secret-scan | ${{ needs.secret-scan.result }} |"
+            echo "| dependency-review | ${{ needs.dependency-review.result }} |"
+            echo "| dockerfile-lint | ${{ needs.dockerfile-lint.result }} |"
+            echo "| sonar | ${{ needs.sonar.result }} |"
+            echo ""
+            echo "- Ref: \`${{ github.ref_name }}\` · SHA: \`$(echo '${{ github.sha }}' | cut -c1-7)\` · Actor: @${{ github.actor }}"
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Coverage details: see **Quality / Quality gate** job summary when coverage ran."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          failed=0
+          for result in \
+            "${{ needs.quality.result }}" \
+            "${{ needs.secret-scan.result }}" \
+            "${{ needs.dockerfile-lint.result }}"
+          do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              failed=1
+            fi
+          done
+
+          # PR-only: dependency graph must be enabled; treat as hard fail.
+          if [ "${{ needs.dependency-review.result }}" = "failure" ]; then
+            echo "dependency-review failed (enable Dependency graph + fix HIGH+ vulns)."
+            failed=1
+          fi
+
+          # Sonar: skipped on PRs / when job if excludes; failure blocks when it ran.
+          if [ "${{ needs.sonar.result }}" = "failure" ]; then
+            echo "SonarQube quality gate failed."
+            failed=1
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            echo "CI gate failed."
+            exit 1
+          fi
+          echo "CI gate passed."

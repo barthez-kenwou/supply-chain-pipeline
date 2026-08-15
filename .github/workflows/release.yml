@@ -1,0 +1,284 @@
+name: Release Image
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  packages: write
+  security-events: write
+  actions: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  IMAGE_NAME: zenora-web
+
+jobs:
+  quality:
+    name: Pre-release quality
+    uses: ./.github/workflows/reusable-quality.yml
+    with:
+      node_version: "22"
+      upload_dist: false
+      run_coverage: false
+
+  build-scan-sign-publish:
+    name: Build → scan → sign → publish
+    needs:
+      - quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Require Harbor secrets
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          missing=0
+          for v in HARBOR_REGISTRY HARBOR_PROJECT HARBOR_USERNAME HARBOR_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "Missing secret: $v"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Normalize Harbor coordinates
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=.github/scripts/normalize-harbor.sh
+          source .github/scripts/normalize-harbor.sh
+          IMAGE_TAG="sha-${GITHUB_SHA::7}"
+          LOCAL_TAG="zenora-web:ci-candidate"
+          {
+            echo "HARBOR_REGISTRY=${HARBOR_REGISTRY}"
+            echo "HARBOR_PROJECT=${HARBOR_PROJECT}"
+            echo "REPO=${REPO}"
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+            echo "LOCAL_TAG=${LOCAL_TAG}"
+          } >> "$GITHUB_ENV"
+          echo "Image repo accepted (host/project/name, tag=${IMAGE_TAG})"
+
+      - name: Login to Harbor
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: echo "$HARBOR_PASSWORD" | docker login "$HARBOR_REGISTRY" -u "$HARBOR_USERNAME" --password-stdin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+
+      - name: Docker metadata labels
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REPO }}
+          labels: |
+            org.opencontainers.image.title=ZENORA Web
+            org.opencontainers.image.vendor=ZENORA
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # 1) Build locally only — never push an unscanned image
+      - name: Build candidate image (local load)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          push: false
+          tags: zenora-web:ci-candidate
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_started_at }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ env.IMAGE_TAG }}
+
+      # 2) Security gate on the candidate — fail closed
+      - name: Trivy image scan (gate HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: zenora-web:ci-candidate
+          format: sarif
+          output: trivy-image.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          scanners: vuln,secret,misconfig
+
+      - name: Upload Trivy image SARIF
+        if: always() && hashFiles('trivy-image.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      # 3) Only then tag + push to Harbor
+      - name: Tag release aliases
+        run: |
+          docker tag "${LOCAL_TAG}" "${REPO}:${IMAGE_TAG}"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            docker tag "${LOCAL_TAG}" "${REPO}:latest"
+          fi
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            docker tag "${LOCAL_TAG}" "${REPO}:${{ github.ref_name }}"
+          fi
+
+      - name: Push image tags
+        id: push
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          push_with_retry() {
+            local ref="$1"
+            local attempt=1
+            local max=3
+            while true; do
+              echo "Pushing ${ref} (attempt ${attempt}/${max})"
+              if docker push "${ref}"; then
+                return 0
+              fi
+              if [ "${attempt}" -ge "${max}" ]; then
+                echo "::error::Harbor returned a server error during docker push (often HTTP 500)."
+                echo "The image tag is valid and login succeeded — this is the registry, not GitHub Actions YAML."
+                echo "On the Harbor host check: registry/core logs, disk space, project quota, proxy timeouts."
+                return 1
+              fi
+              sleep $((attempt * 15))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          push_with_retry "${REPO}:${IMAGE_TAG}"
+          DIGEST="$(crane digest "${REPO}:${IMAGE_TAG}")"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          echo "Resolved digest: $DIGEST"
+
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            push_with_retry "${REPO}:latest"
+          fi
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            push_with_retry "${REPO}:${{ github.ref_name }}"
+          fi
+
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ env.REPO }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Sign image (keyless OIDC)
+        run: cosign sign --yes "${REPO}@${DIGEST}"
+
+      - name: Verify image signature
+        run: |
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release.yml@.*" \
+            "${REPO}@${DIGEST}"
+
+      - name: Attach SBOM to image
+        run: cosign attach sbom --sbom sbom.spdx.json "${REPO}@${DIGEST}"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
+        with:
+          subject-name: ${{ env.REPO }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Write release metadata artifact
+        run: |
+          python3 - <<'PY'
+          import json, os, datetime
+          meta = {
+            "image_repo": os.environ["REPO"],
+            "image_tag": os.environ["IMAGE_TAG"],
+            "image_digest": os.environ["DIGEST"],
+            "image_ref": f'{os.environ["REPO"]}@{os.environ["DIGEST"]}',
+            "git_sha": os.environ["GITHUB_SHA"],
+            "git_ref": os.environ["GITHUB_REF"],
+            "created_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+          }
+          with open("release-metadata.json", "w", encoding="utf-8") as f:
+              json.dump(meta, f, indent=2)
+          print(json.dumps(meta, indent=2))
+          PY
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-metadata
+          path: |
+            release-metadata.json
+            sbom.spdx.json
+            trivy-image.sarif
+          retention-days: 30
+
+      - name: Job summary
+        run: |
+          {
+            echo "## Release published"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Image repo | \`${REPO}\` |"
+            echo "| Tag | \`${IMAGE_TAG}\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Git SHA | \`${GITHUB_SHA}\` |"
+            echo ""
+            echo "Flow: build (local) → Trivy image gate → Harbor push → Cosign → SBOM → provenance"
+            echo ""
+            echo "Artifacts: \`release-metadata\` (metadata + SBOM + Trivy SARIF), retention 30d."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    name: Notify release
+    needs:
+      - quality
+      - build-scan-sign-publish
+    # Failures only — success is visible via Release badge / Actions UI.
+    if: >
+      always() &&
+      (needs.quality.result == 'failure' || needs.build-scan-sign-publish.result == 'failure')
+    uses: ./.github/workflows/reusable-notify.yml
+    with:
+      status: failure
+      title: "ZENORA image release"
+      environment: registry
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

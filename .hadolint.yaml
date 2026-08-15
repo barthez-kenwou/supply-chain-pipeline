@@ -1,0 +1,5 @@
+# Hadolint — keep Dockerfile lint actionable, not noisy.
+failure-threshold: warning
+ignored:
+  - DL3008 # apt pin versions — bookworm-slim base image is already pinned by digest on rebuilds
+  - DL3018 # apk pin — alpine nginx image managed upstream

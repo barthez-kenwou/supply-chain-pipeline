@@ -1,0 +1,319 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Release Image"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+      image_tag:
+        description: "Immutable image tag to deploy (required). Example: sha-1a2b3c4"
+        required: true
+        type: string
+      image_digest:
+        description: "Image digest (sha256:...). Required for production."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: zenora-web
+
+jobs:
+  resolve:
+    name: Resolve release target
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image_tag: ${{ steps.out.outputs.image_tag }}
+      image_digest: ${{ steps.out.outputs.image_digest }}
+      source_sha: ${{ steps.out.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download release metadata (workflow_run)
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-metadata
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve coordinates
+        id: out
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck source=.github/scripts/normalize-harbor.sh
+          source .github/scripts/normalize-harbor.sh
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IMAGE_TAG="${{ inputs.image_tag }}"
+            IMAGE_DIGEST="${{ inputs.image_digest }}"
+            SOURCE_SHA="${GITHUB_SHA}"
+
+            if [ -z "$IMAGE_TAG" ] || [ "$IMAGE_TAG" = "latest" ]; then
+              echo "Refusing to deploy 'latest' or empty tag. Pass an immutable sha-* tag."
+              exit 1
+            fi
+            if [ -z "$IMAGE_DIGEST" ] || [[ "$IMAGE_DIGEST" != sha256:* ]]; then
+              echo "Production deploy requires IMAGE_DIGEST as sha256:..."
+              exit 1
+            fi
+          else
+            if [ ! -f release-metadata.json ]; then
+              echo "release-metadata.json missing from Release Image artifacts"
+              exit 1
+            fi
+            IMAGE_TAG="$(python3 -c 'import json; print(json.load(open("release-metadata.json"))["image_tag"])')"
+            IMAGE_DIGEST="$(python3 -c 'import json; print(json.load(open("release-metadata.json"))["image_digest"])')"
+            SOURCE_SHA="$(python3 -c 'import json; print(json.load(open("release-metadata.json"))["git_sha"])')"
+            if [ -z "$IMAGE_DIGEST" ] || [[ "$IMAGE_DIGEST" != sha256:* ]]; then
+              echo "Release metadata missing a valid image_digest."
+              exit 1
+            fi
+          fi
+
+          if [ -z "${IMAGE_TAG:-}" ]; then
+            echo "Resolved image_tag is empty."
+            exit 1
+          fi
+
+          # Do not export image_ref / image_repo: they contain HARBOR_REGISTRY
+          # (a secret), so GitHub blanks those outputs in downstream jobs.
+          {
+            echo "image_tag=$IMAGE_TAG"
+            echo "image_digest=$IMAGE_DIGEST"
+            echo "source_sha=$SOURCE_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Deploy target"
+            echo ""
+            echo "- Tag: \`$IMAGE_TAG\`"
+            echo "- Digest: \`$IMAGE_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify-signature:
+    name: Verify Cosign signature
+    needs:
+      - resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Verify signature before deploy
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+          IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
+          IMAGE_DIGEST: ${{ needs.resolve.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/normalize-harbor.sh
+          if [ -z "${IMAGE_TAG:-}" ] || [ -z "${IMAGE_DIGEST:-}" ]; then
+            echo "image_tag/image_digest missing from resolve outputs."
+            exit 1
+          fi
+          REF="${REPO}@${IMAGE_DIGEST}"
+          echo "Verifying ${REF} (tag ${IMAGE_TAG})"
+          echo "$HARBOR_PASSWORD" | docker login "$HARBOR_REGISTRY" -u "$HARBOR_USERNAME" --password-stdin
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release.yml@.*" \
+            "$REF"
+          docker logout "$HARBOR_REGISTRY" >/dev/null 2>&1 || true
+
+  deploy:
+    name: Deploy to production
+    needs:
+      - resolve
+      - verify-signature
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Preflight SSH target
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_APP_DIR: ${{ secrets.DEPLOY_APP_DIR }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          host="$(printf '%s' "$DEPLOY_SSH_HOST" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          user="$(printf '%s' "$DEPLOY_SSH_USER" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          port="$(printf '%s' "$DEPLOY_SSH_PORT" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          dir="$(printf '%s' "$DEPLOY_APP_DIR" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+
+          echo "host_set=$([ -n "$host" ] && echo yes || echo NO)"
+          echo "user_set=$([ -n "$user" ] && echo yes || echo NO)"
+          echo "port_set=$([ -n "$port" ] && echo yes || echo NO)"
+          echo "key_set=$([ -n "${DEPLOY_SSH_KEY}" ] && echo yes || echo NO)"
+          echo "known_hosts_set=$([ -n "${DEPLOY_SSH_KNOWN_HOSTS}" ] && echo yes || echo NO)"
+          echo "app_dir_set=$([ -n "$dir" ] && echo yes || echo NO)"
+          echo "runner_ip=$(curl -4 -fsS --max-time 5 https://ifconfig.me || true)"
+
+          if [ -z "$host" ] || [ -z "$user" ] || [ -z "$port" ] || [ -z "${DEPLOY_SSH_KEY}" ] || [ -z "$dir" ] || [ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]; then
+            echo "A deploy SSH secret is empty in environment 'production'."
+            echo "Required: DEPLOY_SSH_HOST USER KEY PORT APP_DIR KNOWN_HOSTS"
+            exit 1
+          fi
+          if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+            echo "DEPLOY_SSH_PORT is not a number."
+            exit 1
+          fi
+
+          {
+            echo "DEPLOY_HOST=${host}"
+            echo "DEPLOY_USER=${user}"
+            echo "DEPLOY_PORT=${port}"
+            echo "APP_DIR=${dir}"
+          } >> "$GITHUB_ENV"
+
+          echo "TCP probe ${host}:${port} (10s)..."
+          set +e
+          nc -vz -w 10 "${host}" "${port}"
+          nc_rc=$?
+          set -e
+          if [ "$nc_rc" -ne 0 ]; then
+            echo "TCP_FAIL: GitHub runner cannot open ${host}:${port}."
+            echo "On the VPS: sudo journalctl -fu ssh --no-pager / OVH firewall / UFW allow (not limit)."
+            exit 1
+          fi
+          echo "TCP_OK"
+
+      - name: Install deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash .github/scripts/ssh-with-secrets.sh
+
+      # One SSH TCP session (ControlMaster) for copy + deploy + smoke.
+      - name: Deploy and smoke over SSH
+        env:
+          HARBOR_REGISTRY: ${{ secrets.HARBOR_REGISTRY }}
+          HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+          PROXY_NETWORK: ${{ vars.PROXY_NETWORK || 'web-proxy' }}
+          PUBLIC_BASE_HOST: ${{ vars.PUBLIC_BASE_HOST || 'zenora360.com' }}
+          IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
+          IMAGE_DIGEST: ${{ needs.resolve.outputs.image_digest }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          CTRL="${RUNNER_TEMP}/zenora-ssh-mux-%C"
+          ssh_opts=(
+            -i "${KEY_FILE}"
+            -o "Port=${DEPLOY_PORT}"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=${KNOWN_HOSTS_FILE}"
+            -o ConnectTimeout=15
+            -o ServerAliveInterval=30
+            -o ControlMaster=auto
+            -o "ControlPath=${CTRL}"
+            -o ControlPersist=90
+          )
+          cleanup() {
+            ssh "${ssh_opts[@]}" -O exit "${DEPLOY_USER}@${DEPLOY_HOST}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" "mkdir -p '${APP_DIR}/deploy'"
+
+          scp "${ssh_opts[@]}" \
+            docker-compose.yml \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${APP_DIR}/docker-compose.yml"
+          scp "${ssh_opts[@]}" \
+            deploy/remote-deploy.sh \
+            deploy/smoke-test.sh \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${APP_DIR}/deploy/"
+
+          ssh "${ssh_opts[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "export HARBOR_REGISTRY=$(printf '%q' "$HARBOR_REGISTRY")
+             export HARBOR_PROJECT=$(printf '%q' "$HARBOR_PROJECT")
+             export HARBOR_USERNAME=$(printf '%q' "$HARBOR_USERNAME")
+             export HARBOR_PASSWORD=$(printf '%q' "$HARBOR_PASSWORD")
+             export DEPLOY_APP_DIR=$(printf '%q' "$APP_DIR")
+             export PROXY_NETWORK=$(printf '%q' "$PROXY_NETWORK")
+             export PUBLIC_BASE_HOST=$(printf '%q' "$PUBLIC_BASE_HOST")
+             export IMAGE_TAG=$(printf '%q' "$IMAGE_TAG")
+             export IMAGE_DIGEST=$(printf '%q' "$IMAGE_DIGEST")
+             export IMAGE_NAME=$(printf '%q' "$IMAGE_NAME")
+             chmod +x '${APP_DIR}/deploy/remote-deploy.sh' '${APP_DIR}/deploy/smoke-test.sh'
+             bash '${APP_DIR}/deploy/remote-deploy.sh'
+             bash '${APP_DIR}/deploy/smoke-test.sh'"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Production deploy"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Tag | \`${{ needs.resolve.outputs.image_tag }}\` |"
+            echo "| Digest | \`${{ needs.resolve.outputs.image_digest }}\` |"
+            echo "| Proxy network | \`${{ vars.PROXY_NETWORK || 'web-proxy' }}\` |"
+            echo "| Public host | \`${{ vars.PUBLIC_BASE_HOST || 'zenora360.com' }}\` |"
+            echo ""
+            echo "- Cosign verified on digest **before** SSH"
+            echo "- Pull by digest on host · SSH host key pinned · smoke on proxy network"
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    name: Notify deploy
+    needs:
+      - resolve
+      - verify-signature
+      - deploy
+    # Always when a deploy was attempted: success is rare & useful; failures must wake someone.
+    if: always() && needs.resolve.result != 'skipped'
+    uses: ./.github/workflows/reusable-notify.yml
+    with:
+      status: ${{ (needs.resolve.result == 'success' && needs.verify-signature.result == 'success' && needs.deploy.result == 'success') && 'success' || 'failure' }}
+      title: "ZENORA production deploy"
+      environment: production
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
