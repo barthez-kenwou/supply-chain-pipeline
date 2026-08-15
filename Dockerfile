@@ -7,7 +7,7 @@ ARG VCS_REF
 ARG VERSION=latest
 
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.source="https://github.com/barthez-kenwou/supply-chain-demo" \
+      org.opencontainers.image.source="https://github.com/barthez-kenwou/supply-chain-pipeline" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.title="Supply Chain Demo" \
@@ -20,7 +20,7 @@ RUN apk upgrade --no-cache || true; \
     chown -R appuser:appgroup /tmp/nginx
 
 COPY app/nginx.conf /etc/nginx/conf.d/default.conf
-COPY app/index.html /usr/share/nginx/html/index.html
+COPY app/index.html app/styles.css app/app.js /usr/share/nginx/html/
 
 RUN chown -R appuser:appgroup /usr/share/nginx/html && \
     chown -R appuser:appgroup /var/cache/nginx && \
