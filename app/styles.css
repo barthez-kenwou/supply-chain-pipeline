@@ -2,14 +2,14 @@
   --bg: #0c1117;
   --bg-elev: #121a22;
   --fg: #e8eef4;
-  --muted: #8b9aab;
-  --line: rgba(232, 238, 244, 0.1);
+  --muted: #b0becb;
+  --line: rgba(232, 238, 244, 0.12);
   --accent: #2dd4bf;
   --accent-dim: rgba(45, 212, 191, 0.14);
   --warn: #e8b86d;
-  --serif: "Instrument Serif", Georgia, serif;
-  --sans: "DM Sans", system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --serif: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, "Liberation Mono", Menlo, monospace;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
 }
@@ -406,8 +406,9 @@ a.chip:hover {
   color: #c5d4e0;
 }
 
-.why {
-  margin: 0 !important;
+p.why,
+.step p.why {
+  margin: 0;
   padding-left: 0.85rem;
   border-left: 2px solid var(--accent);
   font-size: 0.95rem;
@@ -641,11 +642,12 @@ a.chip:hover {
   color: var(--warn);
 }
 
-.stack {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0 1.5rem;
-  font-size: 0.95rem;
+.stack caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0 0 0.65rem;
+  font-weight: 600;
+  color: var(--fg);
 }
 
 .stack th,
@@ -696,14 +698,24 @@ a.chip:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition: none !important;
+  .atmosphere {
+    animation: none;
+    transform: none;
   }
 
-  .atmosphere {
-    transform: none;
+  .hero,
+  .panel.is-active,
+  .arch-nodes .node,
+  .arch-edges .e,
+  .seq-step,
+  .rt-box.app.pulse {
+    animation: none;
+  }
+
+  .step,
+  .arch-block,
+  .tab,
+  .btn {
+    transition: none;
   }
 }

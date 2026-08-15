@@ -8,12 +8,6 @@
       content="Kit DevSecOps reproductible : CI, SAST, DAST, Trivy, Cosign, SBOM, Harbor, deploy par digest. Par Barthez Kenwou."
     />
     <title>Supply Chain Pipeline — Barthez Kenwou</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -42,8 +36,9 @@
           href="https://github.com/barthez-kenwou/supply-chain-pipeline"
           target="_blank"
           rel="noopener noreferrer"
+          aria-label="Mettre une étoile au dépôt sur GitHub"
         >
-          ★ Star
+          Star on GitHub
         </a>
       </div>
     </header>
@@ -70,16 +65,16 @@
       </section>
 
       <nav class="tabs" role="tablist" aria-label="Sections du guide">
-        <button type="button" class="tab is-active" role="tab" aria-selected="true" data-tab="overview">Résumé</button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="pipeline">Pipeline</button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="architecture">Architecture</button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="decisions">Décisions</button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="fieldnotes">Retours terrain</button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="reuse">Intégrer</button>
+        <button type="button" class="tab is-active" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview">Résumé</button>
+        <button type="button" class="tab" role="tab" id="tab-pipeline" aria-controls="panel-pipeline" aria-selected="false" data-tab="pipeline" tabindex="-1">Pipeline</button>
+        <button type="button" class="tab" role="tab" id="tab-architecture" aria-controls="panel-architecture" aria-selected="false" data-tab="architecture" tabindex="-1">Architecture</button>
+        <button type="button" class="tab" role="tab" id="tab-decisions" aria-controls="panel-decisions" aria-selected="false" data-tab="decisions" tabindex="-1">Décisions</button>
+        <button type="button" class="tab" role="tab" id="tab-fieldnotes" aria-controls="panel-fieldnotes" aria-selected="false" data-tab="fieldnotes" tabindex="-1">Retours terrain</button>
+        <button type="button" class="tab" role="tab" id="tab-reuse" aria-controls="panel-reuse" aria-selected="false" data-tab="reuse" tabindex="-1">Intégrer</button>
       </nav>
 
       <!-- ========== OVERVIEW ========== -->
-      <section class="panel is-active" id="panel-overview" role="tabpanel" data-panel="overview">
+      <section class="panel is-active" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview" tabindex="0">
         <article class="prose">
           <h2>En une phrase</h2>
           <p>
@@ -129,7 +124,7 @@
       </section>
 
       <!-- ========== PIPELINE ========== -->
-      <section class="panel" id="panel-pipeline" role="tabpanel" data-panel="pipeline" hidden>
+      <section class="panel" id="panel-pipeline" role="tabpanel" aria-labelledby="tab-pipeline" data-panel="pipeline" hidden tabindex="0">
         <article class="prose">
           <h2>La chaîne, étape par étape</h2>
           <p>
@@ -329,7 +324,7 @@
       </section>
 
       <!-- ========== ARCHITECTURE ========== -->
-      <section class="panel" id="panel-architecture" role="tabpanel" data-panel="architecture" hidden>
+      <section class="panel" id="panel-architecture" role="tabpanel" aria-labelledby="tab-architecture" data-panel="architecture" hidden tabindex="0">
         <article class="prose">
           <h2>Architectures</h2>
           <p>
@@ -341,7 +336,7 @@
         <div class="arch-block" data-reveal>
           <h3>1 · Carte des workflows</h3>
           <div class="arch-canvas" id="arch-workflows" aria-label="Diagramme des workflows">
-            <svg viewBox="0 0 920 420" role="img">
+            <svg viewBox="0 0 920 420" role="img" aria-labelledby="wf-title wf-desc"><title id="wf-title">Carte des workflows CI Security Release Deploy</title><desc id="wf-desc">Flux depuis Push ou PR vers CI, Security, Release Image, Harbor et Deploy sur VPS.</desc>
               <defs>
                 <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
                   <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
@@ -450,7 +445,7 @@
       </section>
 
       <!-- ========== DECISIONS ========== -->
-      <section class="panel" id="panel-decisions" role="tabpanel" data-panel="decisions" hidden>
+      <section class="panel" id="panel-decisions" role="tabpanel" aria-labelledby="tab-decisions" data-panel="decisions" hidden tabindex="0">
         <article class="prose">
           <h2>Pourquoi j’ai choisi ça — et pas autre chose</h2>
 
@@ -515,7 +510,7 @@
       </section>
 
       <!-- ========== FIELD NOTES ========== -->
-      <section class="panel" id="panel-fieldnotes" role="tabpanel" data-panel="fieldnotes" hidden>
+      <section class="panel" id="panel-fieldnotes" role="tabpanel" aria-labelledby="tab-fieldnotes" data-panel="fieldnotes" hidden tabindex="0">
         <article class="prose">
           <h2>Retours terrain — ce qui a cassé, ce que j’ai fait</h2>
           <p>
@@ -588,7 +583,7 @@
       </section>
 
       <!-- ========== REUSE / INTEGRATE ========== -->
-      <section class="panel" id="panel-reuse" role="tabpanel" data-panel="reuse" hidden>
+      <section class="panel" id="panel-reuse" role="tabpanel" aria-labelledby="tab-reuse" data-panel="reuse" hidden tabindex="0">
         <article class="prose">
           <h2>Intégrer la supply chain dans ton projet</h2>
           <p>
@@ -750,8 +745,9 @@
         <article class="prose">
           <h3>Stack typique</h3>
           <table class="stack">
+            <caption>Briques de la stack et leur rôle</caption>
             <thead>
-              <tr><th>Brique</th><th>Rôle</th></tr>
+              <tr><th scope="col">Brique</th><th scope="col">Rôle</th></tr>
             </thead>
             <tbody>
               <tr><td>GitHub Actions</td><td>orchestration fail-closed</td></tr>

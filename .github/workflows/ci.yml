@@ -110,9 +110,6 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=supply-chain-demo
-            -Dsonar.sources=app,deploy,.github/scripts
-            -Dsonar.exclusions=**/*.md,**/node_modules/**
             -Dsonar.qualitygate.wait=true
 
   ci-summary:
