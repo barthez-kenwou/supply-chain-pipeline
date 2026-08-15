@@ -101,6 +101,7 @@ jobs:
           fi
 
       - name: SonarQube scan (fail-closed quality gate)
+        id: sonar-scan
         if: steps.sonar-ready.outputs.enabled == 'true'
         # Community Build: do NOT pass sonar.branch.name / sonar.pullrequest.*
         # (those require Developer Edition+).
@@ -111,6 +112,75 @@ jobs:
         with:
           args: >
             -Dsonar.qualitygate.wait=true
+            -Dsonar.verbose=true
+
+      - name: Print Sonar quality gate conditions on failure
+        if: failure() && steps.sonar-ready.outputs.enabled == 'true'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          set -euo pipefail
+          REPORT=".scannerwork/report-task.txt"
+          if [ ! -f "$REPORT" ]; then
+            echo "No report-task.txt"
+            find .scannerwork -maxdepth 2 -type f | head -50 || true
+            exit 0
+          fi
+          cat "$REPORT"
+          # Use python urllib with token — same host the scanner already reached
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          host=os.environ["SONAR_HOST_URL"].rstrip("/")
+          token=os.environ["SONAR_TOKEN"]
+          url=f"{host}/api/qualitygates/project_status?projectKey=supply-chain-demo"
+          req=urllib.request.Request(url)
+          req.add_header("Authorization", "Bearer " + token)
+          try:
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  data=json.load(r)
+          except Exception as e:
+              print("Bearer failed", e)
+              import base64
+              basic=base64.b64encode((token+":").encode()).decode()
+              req=urllib.request.Request(url)
+              req.add_header("Authorization", "Basic " + basic)
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  data=json.load(r)
+          print(json.dumps(data, indent=2))
+          status=data.get("projectStatus",{})
+          print("QG", status.get("status"))
+          for c in status.get("conditions", []):
+              print(f"COND {c.get('status')} metric={c.get('metricKey')} actual={c.get('actualValue')} error={c.get('errorThreshold')} comparator={c.get('comparator')}")
+          # Issues
+          iurl=f"{host}/api/issues/search?componentKeys=supply-chain-demo&resolved=false&ps=100"
+          req=urllib.request.Request(iurl)
+          req.add_header("Authorization", "Bearer " + token)
+          try:
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  issues=json.load(r)
+          except Exception:
+              import base64
+              basic=base64.b64encode((token+":").encode()).decode()
+              req=urllib.request.Request(iurl)
+              req.add_header("Authorization", "Basic " + basic)
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  issues=json.load(r)
+          print("ISSUES", issues.get("total"))
+          for i in issues.get("issues", []):
+              print(f"{i.get('severity')}\t{i.get('type')}\t{i.get('rule')}\t{i.get('component','').split(':')[-1]}:{i.get('line')}\t{i.get('message')}")
+          hurl=f"{host}/api/hotspots/search?projectKey=supply-chain-demo&status=TO_REVIEW&ps=50"
+          req=urllib.request.Request(hurl)
+          req.add_header("Authorization", "Bearer " + token)
+          try:
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  hot=json.load(r)
+              print("HOTSPOTS", hot.get("paging",{}).get("total"))
+              for h in hot.get("hotspots", []):
+                  print(f"HOTSPOT\t{h.get('ruleKey')}\t{h.get('component','').split(':')[-1]}:{h.get('line')}\t{h.get('message')}")
+          except Exception as e:
+              print("hotspots fetch failed", e)
+          PY
 
   ci-summary:
     name: CI summary
