@@ -53,7 +53,18 @@ trap cleanup_harbor_login EXIT
 echo "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY}" -u "${HARBOR_USERNAME}" --password-stdin
 
 echo "Pulling ${IMAGE_REF}"
-docker compose pull web
+if ! pull_out="$(docker compose pull web 2>&1)"; then
+  echo "${pull_out}"
+  if echo "${pull_out}" | grep -Eqi '412|PROJECTPOLICYVIOLATION|not signed by cosign|Precondition Failed'; then
+    echo ""
+    echo "Harbor refused the pull (HTTP 412 / Cosign project policy)."
+    echo "This is NOT a bad digest and NOT an SSH bug."
+    echo "On Harbor → Project → Configuration → Deployment security:"
+    echo "  disable the Cosign checkbox, Save, then re-run Deploy."
+    echo "Signature enforcement stays in GitHub Actions (cosign verify before SSH)."
+  fi
+  exit 1
+fi
 
 # container_name conflicts if an older container exists outside this compose project.
 if docker inspect supply-chain-web >/dev/null 2>&1; then

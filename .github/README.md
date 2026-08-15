@@ -245,6 +245,7 @@ Tu ne réécris pas la chaîne. Tu **personnalises** la colonne vertébrale.
 
 - [ ] Secrets Harbor + SSH + `DEPLOY_SSH_KNOWN_HOSTS`
 - [ ] `SONAR_HOST_URL` + `SONAR_TOKEN` + projet Sonar `supply-chain-demo`
+- [ ] **Harbor projet : Cosign (Deployment security) = OFF** — sinon pull/sign → HTTP 412
 - [ ] `PROXY_NETWORK` = réseau du reverse proxy
 - [ ] Proxy → `container:port` (ex. `supply-chain-web:8080`)
 - [ ] Branch protection + env `production` (main only)
