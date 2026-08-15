@@ -26,16 +26,12 @@ concurrency:
 
 env:
   NODE_VERSION: "22"
-  IMAGE_NAME: zenora-web
+  IMAGE_NAME: supply-chain-web
 
 jobs:
   quality:
     name: Pre-release quality
     uses: ./.github/workflows/reusable-quality.yml
-    with:
-      node_version: "22"
-      upload_dist: false
-      run_coverage: false
 
   build-scan-sign-publish:
     name: Build → scan → sign → publish
@@ -72,7 +68,7 @@ jobs:
           # shellcheck source=.github/scripts/normalize-harbor.sh
           source .github/scripts/normalize-harbor.sh
           IMAGE_TAG="sha-${GITHUB_SHA::7}"
-          LOCAL_TAG="zenora-web:ci-candidate"
+          LOCAL_TAG="supply-chain-web:ci-candidate"
           {
             echo "HARBOR_REGISTRY=${HARBOR_REGISTRY}"
             echo "HARBOR_PROJECT=${HARBOR_PROJECT}"
@@ -100,8 +96,8 @@ jobs:
         with:
           images: ${{ env.REPO }}
           labels: |
-            org.opencontainers.image.title=ZENORA Web
-            org.opencontainers.image.vendor=ZENORA
+            org.opencontainers.image.title=Supply-chain demo Web
+            org.opencontainers.image.vendor=Supply-chain demo
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
@@ -113,7 +109,7 @@ jobs:
           file: ./Dockerfile
           load: true
           push: false
-          tags: zenora-web:ci-candidate
+          tags: supply-chain-web:ci-candidate
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -126,7 +122,7 @@ jobs:
       - name: Trivy image scan (gate HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: zenora-web:ci-candidate
+          image-ref: supply-chain-web:ci-candidate
           format: sarif
           output: trivy-image.sarif
           severity: HIGH,CRITICAL
@@ -278,7 +274,7 @@ jobs:
     uses: ./.github/workflows/reusable-notify.yml
     with:
       status: failure
-      title: "ZENORA image release"
+      title: "Supply-chain demo image release"
       environment: registry
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Supply Chain Demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0f1419;
+        --fg: #e7ecf1;
+        --muted: #9aa7b5;
+        --accent: #3d9cfd;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(1200px 600px at 10% -10%, #1a3a5c 0%, transparent 55%),
+          var(--bg);
+        color: var(--fg);
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+      }
+      main {
+        max-width: 40rem;
+        width: 100%;
+      }
+      h1 {
+        font-size: clamp(1.75rem, 4vw, 2.25rem);
+        letter-spacing: -0.03em;
+        margin: 0 0 0.75rem;
+      }
+      p { color: var(--muted); line-height: 1.55; margin: 0 0 1rem; }
+      code {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.9em;
+        color: var(--accent);
+      }
+      ul { margin: 0; padding-left: 1.2rem; color: var(--muted); line-height: 1.7; }
+      a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Supply chain demo</h1>
+      <p>
+        Minimal static image used to showcase an OCI delivery pipeline:
+        quality → security → signed image → digest deploy.
+      </p>
+      <ul>
+        <li>Build → Trivy gate → Harbor push</li>
+        <li>Cosign keyless + SBOM + provenance</li>
+        <li>SSH deploy by <code>@sha256</code> behind a reverse proxy</li>
+      </ul>
+      <p>
+        Health probe: <a href="/health"><code>/health</code></a>
+      </p>
+    </main>
+  </body>
+</html>

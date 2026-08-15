@@ -4,8 +4,8 @@ set -euo pipefail
 
 key="$(printf '%s' "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY is empty}" | tr -d '\r')"
 install -d -m 700 "${HOME}/.ssh"
-KEY_FILE="${HOME}/.ssh/zenora-deploy"
-KNOWN_HOSTS_FILE="${HOME}/.ssh/zenora-known_hosts"
+KEY_FILE="${HOME}/.ssh/supply-chain-deploy"
+KNOWN_HOSTS_FILE="${HOME}/.ssh/supply-chain-known_hosts"
 
 printf '%s\n' "$key" > "${KEY_FILE}"
 chmod 600 "${KEY_FILE}"

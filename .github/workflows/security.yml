@@ -35,9 +35,6 @@ concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  NODE_VERSION: "22"
-
 jobs:
   trivy-fs:
     name: Trivy filesystem + config
@@ -46,15 +43,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
@@ -154,29 +142,6 @@ jobs:
             exit 1
           fi
 
-      - name: Production dependency audit (advisory)
-        continue-on-error: true
-        run: |
-          set +e
-          npm audit --omit=dev --json > npm-audit.json
-          STATUS=$?
-          set -e
-          {
-            echo "## npm audit (production deps)"
-            echo ""
-            echo "Exit code: $STATUS"
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 0
-
-      - name: Upload npm audit report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: npm-audit-report
-          path: npm-audit.json
-          if-no-files-found: ignore
-          retention-days: 30
-
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
@@ -217,7 +182,7 @@ jobs:
         run: |
           TARGET="${{ inputs.zap_target_url }}"
           if [ -z "$TARGET" ]; then
-            TARGET="https://zenora360.com"
+            TARGET="https://example.com"
           fi
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 

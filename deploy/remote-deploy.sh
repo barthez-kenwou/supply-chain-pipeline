@@ -7,10 +7,10 @@ set -euo pipefail
 
 cd "${DEPLOY_APP_DIR}"
 
-export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-zenora}"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-supply-chain}"
 export PROXY_NETWORK="${PROXY_NETWORK:-web-proxy}"
 
-PREVIOUS_IMAGE="$(docker inspect --format='{{.Config.Image}}' zenora-web 2>/dev/null || true)"
+PREVIOUS_IMAGE="$(docker inspect --format='{{.Config.Image}}' supply-chain-web 2>/dev/null || true)"
 
 # Prefer digest for immutable pull; fall back to tag only if digest missing.
 if [ -n "${IMAGE_DIGEST:-}" ]; then
@@ -56,19 +56,19 @@ echo "Pulling ${IMAGE_REF}"
 docker compose pull web
 
 # container_name conflicts if an older container exists outside this compose project.
-if docker inspect zenora-web >/dev/null 2>&1; then
-  project_label="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' zenora-web 2>/dev/null || true)"
-  service_label="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' zenora-web 2>/dev/null || true)"
+if docker inspect supply-chain-web >/dev/null 2>&1; then
+  project_label="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' supply-chain-web 2>/dev/null || true)"
+  service_label="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' supply-chain-web 2>/dev/null || true)"
   if [ "${project_label}" != "${COMPOSE_PROJECT_NAME}" ] || [ "${service_label}" != "web" ]; then
-    echo "Removing orphaned container zenora-web (project='${project_label}' service='${service_label}')"
-    docker rm -f zenora-web
+    echo "Removing orphaned container supply-chain-web (project='${project_label}' service='${service_label}')"
+    docker rm -f supply-chain-web
   fi
 fi
 
 docker compose up -d --force-recreate --remove-orphans web
 
 check_health() {
-  docker exec zenora-web wget --no-verbose --tries=1 --spider "http://127.0.0.1:8080/health" >/dev/null 2>&1
+  docker exec supply-chain-web wget --no-verbose --tries=1 --spider "http://127.0.0.1:8080/health" >/dev/null 2>&1
 }
 
 wait_healthy() {
@@ -91,8 +91,8 @@ wait_healthy() {
 
 if ! wait_healthy "deploy"; then
   echo "Deployment healthcheck failed (container :8080/health)."
-  docker ps -a --filter name=zenora-web --no-trunc || true
-  docker logs --tail 80 zenora-web || true
+  docker ps -a --filter name=supply-chain-web --no-trunc || true
+  docker logs --tail 80 supply-chain-web || true
 
   if [ -n "${PREVIOUS_IMAGE}" ] && [ "${PREVIOUS_IMAGE}" != "${IMAGE_REF}" ]; then
     echo "Rolling back to ${PREVIOUS_IMAGE}"
@@ -111,7 +111,7 @@ EOF
       echo "rollback healthy — previous image is serving; new deploy rejected."
     else
       echo "rollback failed — previous image did not become healthy."
-      docker logs --tail 80 zenora-web || true
+      docker logs --tail 80 supply-chain-web || true
     fi
   else
     echo "No previous image available for rollback."

@@ -1,7 +1,4 @@
-# Local override: publish a host port and do not require an external NPM network.
-# Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
-
+# Local override: publish a host port; create a local bridge if needed.
 services:
   web:
     ports:
@@ -9,5 +6,5 @@ services:
 
 networks:
   proxy:
-    name: ${PROXY_NETWORK:-zenora-local}
+    name: ${PROXY_NETWORK:-supply-chain-local}
     external: false

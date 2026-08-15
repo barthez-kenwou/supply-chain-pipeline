@@ -33,7 +33,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: zenora-web
+  IMAGE_NAME: supply-chain-web
 
 jobs:
   resolve:
@@ -234,13 +234,13 @@ jobs:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
           HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
           PROXY_NETWORK: ${{ vars.PROXY_NETWORK || 'web-proxy' }}
-          PUBLIC_BASE_HOST: ${{ vars.PUBLIC_BASE_HOST || 'zenora360.com' }}
+          PUBLIC_BASE_HOST: ${{ vars.PUBLIC_BASE_HOST || 'example.com' }}
           IMAGE_TAG: ${{ needs.resolve.outputs.image_tag }}
           IMAGE_DIGEST: ${{ needs.resolve.outputs.image_digest }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
           set -euo pipefail
-          CTRL="${RUNNER_TEMP}/zenora-ssh-mux-%C"
+          CTRL="${RUNNER_TEMP}/sc-ssh-mux-%C"
           ssh_opts=(
             -i "${KEY_FILE}"
             -o "Port=${DEPLOY_PORT}"
@@ -295,7 +295,7 @@ jobs:
             echo "| Tag | \`${{ needs.resolve.outputs.image_tag }}\` |"
             echo "| Digest | \`${{ needs.resolve.outputs.image_digest }}\` |"
             echo "| Proxy network | \`${{ vars.PROXY_NETWORK || 'web-proxy' }}\` |"
-            echo "| Public host | \`${{ vars.PUBLIC_BASE_HOST || 'zenora360.com' }}\` |"
+            echo "| Public host | \`${{ vars.PUBLIC_BASE_HOST || 'example.com' }}\` |"
             echo ""
             echo "- Cosign verified on digest **before** SSH"
             echo "- Pull by digest on host · SSH host key pinned · smoke on proxy network"
@@ -313,7 +313,7 @@ jobs:
     uses: ./.github/workflows/reusable-notify.yml
     with:
       status: ${{ (needs.resolve.result == 'success' && needs.verify-signature.result == 'success' && needs.deploy.result == 'success') && 'success' || 'failure' }}
-      title: "ZENORA production deploy"
+      title: "Supply-chain demo production deploy"
       environment: production
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

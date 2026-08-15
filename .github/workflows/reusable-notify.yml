@@ -60,7 +60,7 @@ jobs:
                   {\"title\": \"Actor\", \"value\": \"${{ github.actor }}\", \"short\": true},
                   {\"title\": \"Run\", \"value\": \"${{ github.run_id }}\", \"short\": true}
                 ],
-                \"footer\": \"ZENORA DevSecOps\"
+                \"footer\": \"Supply-chain demo DevSecOps\"
               }]
             }" \
             "$SLACK_WEBHOOK_URL"

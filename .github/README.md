@@ -1,4 +1,4 @@
-# ZENORA DevSecOps Kit
+# Supply Chain Demo — DevSecOps kit
 
 Chaîne CI/CD **prête à brancher** : qualité → sécurité → image scannée & signée → deploy par digest.
 
@@ -24,7 +24,7 @@ Fail-closed là où ça compte : rien dans Harbor sans Trivy image OK, pas de SS
 │   ├── normalize-harbor.sh   # registry/project clean (pas de https://, lowercase…)
 │   └── ssh-with-secrets.sh   # clé privée + known_hosts pinés
 └── workflows/
-    ├── reusable-quality.yml  # lint · typecheck · test · build
+    ├── reusable-quality.yml  # Hadolint · asset checks · image build · /health
     ├── reusable-notify.yml   # Slack optionnel
     ├── ci.yml
     ├── security.yml
@@ -133,7 +133,7 @@ sequenceDiagram
 
   Dev->>Rel: merge main
   Rel->>Rel: quality
-  Rel->>Rel: docker build load zenora-web:ci-candidate
+  Rel->>Rel: docker build load supply-chain-web:ci-candidate
   Rel->>Rel: Trivy image gate
   Note over Rel: Échec ici = aucun push Harbor
   Rel->>Har: docker push …:sha-xxxxxxx
@@ -150,7 +150,7 @@ sequenceDiagram
   alt health KO
     VPS->>VPS: rollback + re-test health
   end
-  VPS->>Proxy: smoke curl zenora-web:8080
+  VPS->>Proxy: smoke curl supply-chain-web:8080
   Edge-->>Dep: HTTPS /health best-effort
 ```
 
@@ -172,7 +172,7 @@ flowchart LR
 
   subgraph vps["VPS"]
     NPM["Nginx Proxy Manager<br/>:80 / :443"]
-    WEB["app container<br/>ex. zenora-web:8080"]
+    WEB["app container<br/>ex. supply-chain-web:8080"]
     NET[["docker network<br/>PROXY_NETWORK<br/>ex. web-proxy"]]
     NPM --- NET
     WEB --- NET
@@ -242,7 +242,7 @@ Tu ne réécris pas la chaîne. Tu **personnalises** la colonne vertébrale.
 
 - [ ] Secrets Harbor + SSH + `DEPLOY_SSH_KNOWN_HOSTS`
 - [ ] `PROXY_NETWORK` = réseau du reverse proxy
-- [ ] Proxy → `container:port` (ex. `zenora-web:8080`)
+- [ ] Proxy → `container:port` (ex. `supply-chain-web:8080`)
 - [ ] Branch protection + env `production` (main only)
 - [ ] Sonar / Slack si besoin
 - [ ] Exception edge sur `/health` si smoke public souhaité

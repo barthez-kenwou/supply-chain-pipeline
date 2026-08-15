@@ -1,0 +1,54 @@
+# Demo stack — Harbor pull / local build + reverse-proxy network
+#
+# Production (Nginx Proxy Manager or similar):
+#   PROXY_NETWORK=web-proxy
+#   docker compose pull web && docker compose up -d web
+#   Proxy host → supply-chain-web:8080 on the same Docker network
+#
+# Local:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+
+services:
+  web:
+    image: ${IMAGE_REF:-harbor.local/demo/supply-chain-web:latest}
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${IMAGE_TAG:-latest}
+    container_name: supply-chain-web
+    restart: unless-stopped
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:mode=1777
+      - /var/run:mode=1777
+      - /tmp/nginx:mode=1777
+      - /var/log/nginx:mode=1777
+    labels:
+      - "com.supplychain.service=web"
+      - "com.supplychain.version=${IMAGE_TAG:-latest}"
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    name: ${PROXY_NETWORK:-web-proxy}
+    external: true

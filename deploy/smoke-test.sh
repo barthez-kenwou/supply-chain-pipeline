@@ -6,17 +6,17 @@
 set -euo pipefail
 
 PROXY_NETWORK="${PROXY_NETWORK:-web-proxy}"
-PUBLIC_BASE_HOST="${PUBLIC_BASE_HOST:-zenora360.com}"
+PUBLIC_BASE_HOST="${PUBLIC_BASE_HOST:-example.com}"
 
 echo "== container /health =="
-docker exec zenora-web wget -q -O - http://127.0.0.1:8080/health
+docker exec supply-chain-web wget -q -O - http://127.0.0.1:8080/health
 echo
 
 if [ -n "${IMAGE_DIGEST:-}" ]; then
   echo "== running image digest =="
   # Prefer Config.Image (compose sets repo@sha256:… on digest pulls).
   # RepoDigests can be empty right after recreate depending on engine/version.
-  running_image="$(docker inspect -f '{{.Config.Image}}' zenora-web)"
+  running_image="$(docker inspect -f '{{.Config.Image}}' supply-chain-web)"
   echo "Config.Image=${running_image}"
   case "${running_image}" in
     *"@${IMAGE_DIGEST}")
@@ -25,7 +25,7 @@ if [ -n "${IMAGE_DIGEST:-}" ]; then
     *)
       # Fallback: image object RepoDigests (when populated)
       matched=0
-      image_id="$(docker inspect -f '{{.Image}}' zenora-web)"
+      image_id="$(docker inspect -f '{{.Image}}' supply-chain-web)"
       while IFS= read -r line; do
         [ -z "${line}" ] && continue
         case "${line}" in
@@ -43,19 +43,19 @@ if [ -n "${IMAGE_DIGEST:-}" ]; then
   esac
 fi
 
-echo "== docker network ${PROXY_NETWORK} -> zenora-web:8080 =="
+echo "== docker network ${PROXY_NETWORK} -> supply-chain-web:8080 =="
 docker run --rm --network "${PROXY_NETWORK}" curlimages/curl:8.5.0 \
-  -fsS --max-time 15 http://zenora-web:8080/health
+  -fsS --max-time 15 http://supply-chain-web:8080/health
 echo
 code="$(
   docker run --rm --network "${PROXY_NETWORK}" curlimages/curl:8.5.0 \
-    -fsS -o /dev/null -w '%{http_code}' --max-time 15 http://zenora-web:8080/
+    -fsS -o /dev/null -w '%{http_code}' --max-time 15 http://supply-chain-web:8080/
 )"
 echo "GET / -> ${code}"
 case "${code}" in
   200|301|302) ;;
   *)
-    echo "Unexpected status from zenora-web on ${PROXY_NETWORK}: ${code}"
+    echo "Unexpected status from supply-chain-web on ${PROXY_NETWORK}: ${code}"
     exit 1
     ;;
 esac
