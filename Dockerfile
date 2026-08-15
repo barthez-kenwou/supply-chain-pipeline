@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Minimal static demo image — proves the supply-chain path without an app monolith.
-FROM nginx:1.27-alpine AS production
+FROM nginx:1.31-alpine AS production
 
 ARG BUILD_DATE
 ARG VCS_REF
